@@ -1,4 +1,4 @@
-import "./env"; // must stay first: loads .env before other modules read process.env
+﻿import "./env"; // must stay first: loads .env before other modules read process.env
 import express, { type Request, type Response } from "express";
 import { createServer } from "http";
 import path from "path";
@@ -42,7 +42,7 @@ function buildApi() {
   const api = express.Router();
   api.use(express.json({ limit: "64kb" }));
 
-  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured() }));
+  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured(), storage: persistLabel().startsWith("postgres") ? "database" : "files" }));
 
   // ----- Accounts -----
   api.post("/auth/register", (req, res) => {
