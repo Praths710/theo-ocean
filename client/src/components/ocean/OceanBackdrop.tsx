@@ -17,19 +17,25 @@ export const ZONE_PALETTES: Palette[] = [
 ];
 
 const VERT = `attribute vec2 p; varying vec2 vUv; void main(){ vUv = p*0.5+0.5; gl_Position = vec4(p,0.0,1.0); }`;
-const FRAG = `precision mediump float;
+const FRAG = `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
 uniform vec2 uRes; uniform float uTime; uniform vec3 uTop; uniform vec3 uBot; uniform float uLight; uniform vec2 uDiver; uniform float uLamp; uniform float uFacing; uniform float uCam;
 varying vec2 vUv;
 #define TAU 6.28318530718
 float caustic(vec2 uv, float t){
-  vec2 p = mod(uv*TAU, TAU) - 250.0; vec2 i = p; float c = 1.0; float inten = .005;
+  vec2 p = uv*TAU - 250.0; vec2 i = p; float c = 1.0; float inten = .005; // no mod(): wrapping made a seam
   for (int n = 0; n < 4; n++) {
     float tt = t * (1.0 - (3.5 / float(n+1)));
     i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
     c += 1.0/length(vec2(p.x / (sin(i.x+tt)/inten), p.y / (cos(i.y+tt)/inten)));
   }
-  c /= 4.0; c = 1.17 - pow(c, 1.4);
-  return pow(abs(c), 8.0);
+  c /= 4.0;
+  if (!(c >= 0.0 && c < 1.0e4)) c = 1.0; // guard NaN/inf speckles
+  c = 1.17 - pow(c, 1.4);
+  return clamp(pow(abs(c), 8.0), 0.0, 1.0);
 }
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
 void main(){
@@ -55,6 +61,8 @@ void main(){
   col += vec3(0.7,0.88,1.0) * uLamp * (halo*0.22 + cone*0.42);
   vec2 q = uv - 0.5; col *= 1.0 - dot(q,q)*0.95;
   col += (hash(gl_FragCoord.xy + fract(uTime)) - 0.5)/200.0;
+  col = clamp(col, 0.0, 1.0);
+  if (!(col.r >= 0.0 && col.g >= 0.0 && col.b >= 0.0)) col = uBot; // never output NaN pixels
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -99,6 +107,10 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
 
     const cur = { top: [...target.current.top], bottom: [...target.current.bottom], light: target.current.light, bio: target.current.bio };
     let W = 0, H = 0;
+    const snow: Particle[] = Array.from({ length: 140 }, () => ({ x: 0, y: 0, vx: 0, vy: 4 + Math.random() * 8, r: 0.5 + Math.random() * 1.6, a: 0.15 + Math.random() * 0.4, kind: 0, life: 0, seed: Math.random() * 100 }));
+    const bio: Particle[] = Array.from({ length: 70 }, () => ({ x: 0, y: 0, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, r: 1 + Math.random() * 1.8, a: 0, kind: 1, life: 0, seed: Math.random() * 100 }));
+    let seeded = false;
+    let bubbles: Particle[] = [];
     const resize = () => {
       const el = glRef.current!.parentElement!;
       W = el.clientWidth; H = el.clientHeight;
@@ -107,14 +119,15 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
       const d = Math.min(window.devicePixelRatio, 2);
       fxRef.current!.width = W * d; fxRef.current!.height = H * d;
       fx.setTransform(d, 0, 0, d, 0, 0);
+      // Scatter particles once we know the real size (it can be 0 at first layout, e.g. on mobile).
+      if (!seeded && W > 0 && H > 0) {
+        seeded = true;
+        for (const p of [...snow, ...bio]) { p.x = Math.random() * W; p.y = Math.random() * H; }
+      }
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(glRef.current!.parentElement!);
-
-    const snow: Particle[] = Array.from({ length: 140 }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: 0, vy: 4 + Math.random() * 8, r: 0.5 + Math.random() * 1.6, a: 0.15 + Math.random() * 0.4, kind: 0, life: 0, seed: Math.random() * 100 }));
-    const bio: Particle[] = Array.from({ length: 70 }, () => ({ x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, r: 1 + Math.random() * 1.8, a: 0, kind: 1, life: 0, seed: Math.random() * 100 }));
-    let bubbles: Particle[] = [];
 
     let raf = 0; let last = performance.now(); const t0 = last;
     const frame = (now: number) => {
@@ -139,6 +152,7 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
       }
 
       fx.clearRect(0, 0, W, H);
+      if (!seeded) { raf = requestAnimationFrame(frame); return; }
       // Particles scroll with the camera at a slower rate than the world (depth parallax).
       const cam = camera?.current.x ?? 0;
       const span = W + 20;
