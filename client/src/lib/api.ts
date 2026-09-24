@@ -1,6 +1,7 @@
-import type { PlayerState, Quiz } from "@shared/ocean";
+import type { Checkpoint, CheckpointResult, PlayerState, Quiz } from "@shared/ocean";
 
-export type PlayerSnapshot = { state: PlayerState; maxZoneIndex: number };
+export type CheckpointStatus = { zoneId: string; scanned: number; total: number; allScanned: boolean; passed: boolean };
+export type PlayerSnapshot = { state: PlayerState; maxZoneIndex: number; checkpoint?: CheckpointStatus };
 export type User = { id: string; username: string };
 export type AuthResult = PlayerSnapshot & { user: User };
 
@@ -28,6 +29,8 @@ export const api = {
   discover: (speciesId: string) => send("/api/me/discover", { speciesId }).then((r) => json<PlayerSnapshot & { gained: number }>(r)),
   reset: () => send("/api/me/reset").then((r) => json<PlayerSnapshot>(r)),
   quiz: (speciesId?: string) => send("/api/quiz", { speciesId }).then((r) => json<{ quiz: Quiz | null; message?: string }>(r)),
+  checkpointStart: () => send("/api/checkpoint/start").then((r) => json<{ checkpoint: Checkpoint }>(r)),
+  checkpointSubmit: (id: string, answers: number[]) => send("/api/checkpoint/submit", { id, answers }).then((r) => json<PlayerSnapshot & CheckpointResult>(r)),
   answer: (quizId: string, answerIndex: number) =>
     send("/api/quiz/answer", { quizId, answerIndex }).then((r) =>
       json<PlayerSnapshot & { correct: boolean; correctIndex: number; explanation: string; gained: number; mood: string }>(r),

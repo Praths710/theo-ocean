@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpRight, Brain, Home, Lock, MessageCircle, Mic, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpRight, Brain, Home, Lock, MessageCircle, Mic, ShieldCheck, Volume2, VolumeX, X } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { zones, type Species } from "@shared/ocean";
@@ -9,6 +9,7 @@ import Diver from "@/components/art/Diver";
 import Creature, { type Art } from "@/components/art/Creature";
 import { speciesArt } from "@/components/art/speciesArt";
 import Companion, { MOOD_COLORS, type CompanionHandle } from "@/components/Companion";
+import CheckpointQuiz from "@/components/CheckpointQuiz";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { oceanAudio } from "@/lib/oceanAudio";
@@ -65,12 +66,18 @@ export default function Dive() {
   const [near, setNear] = useState<string | null>(null);
   const [edge, setEdge] = useState<"top" | "bottom" | null>(null);
   const [cardId, setCardId] = useState<string | null>(null);
+  const [checkpointOpen, setCheckpointOpen] = useState(false);
   const [scanning, setScanning] = useState<string | null>(null);
   const [transition, setTransition] = useState<"down" | "up" | null>(null);
   const [muted, setMuted] = useState(oceanAudio.isMuted());
   const [line, setLine] = useState({ text: "", mood: "curious", speaking: false, listening: false, thinking: false });
   const [lineVisible, setLineVisible] = useState(false);
   const nearRef = useRef<string | null>(null);
+  // Latest unlock state for the keyboard handler.
+  const maxZoneRef = useRef(maxZone);
+  maxZoneRef.current = maxZone;
+  const allScannedRef = useRef(false);
+  allScannedRef.current = zone.species.every((s) => state.discovered.includes(s.id));
   const edgeRef = useRef<"top" | "bottom" | null>(null);
 
   const card = useMemo(() => zone.species.find((s) => s.id === cardId) ?? null, [zone, cardId]);
@@ -155,7 +162,7 @@ export default function Dive() {
     if (!target || busyZone.current) return;
     if (index > maxZone) {
       oceanAudio.sfx("lock");
-      toast(`${target.name} is locked`, { description: `Reach ${target.xpRequired} XP. Scan creatures and ace quizzes!` });
+      toast(`${target.name} is locked`, { description: `Scan every creature in the ${zones[index - 1]?.name ?? zone.name}, then pass its checkpoint quiz at the bottom of the level.` });
       return;
     }
     busyZone.current = true;
@@ -188,7 +195,8 @@ export default function Dive() {
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(k)) follow.current = null;
       if (k === "e" && nearRef.current) void scan(nearRef.current);
       if (k === " " || k === "enter") {
-        if (edgeRef.current === "bottom" && nextZone) void changeZone(zoneIndex + 1);
+        if (edgeRef.current === "bottom" && nextZone && zoneIndex + 1 <= maxZoneRef.current) void changeZone(zoneIndex + 1);
+        else if (edgeRef.current === "bottom" && nextZone && allScannedRef.current) setCheckpointOpen(true);
         else if (edgeRef.current === "top" && zoneIndex > 0) void changeZone(zoneIndex - 1);
         else if (nearRef.current) void scan(nearRef.current);
       }
@@ -350,9 +358,12 @@ export default function Dive() {
   };
 
   const xp = state.xp;
-  const xpPct = nextZone ? Math.min(100, Math.max(0, ((xp - zone.xpRequired) / (nextZone.xpRequired - zone.xpRequired)) * 100)) : 100;
   const foundHere = zone.species.filter((s) => state.discovered.includes(s.id)).length;
+  const allScanned = foundHere === zone.species.length;
+  const passedHere = Boolean(state.passedZones?.includes(zone.id));
   const nextUnlocked = nextZone && zoneIndex + 1 <= maxZone;
+  // Unlock progress: scanning is 70% of the way, passing the checkpoint is the rest.
+  const unlockPct = !nextZone || passedHere ? 100 : Math.round((foundHere / zone.species.length) * 70);
 
   return (
     <main className={`dive zone-${zoneIndex} ${transition ? `transition-${transition}` : ""}`}>
@@ -425,8 +436,11 @@ export default function Dive() {
         </div>
         <div className="hud-depth"><span className="hud-kicker">DEPTH</span><span ref={depthEl} className="hud-depth-num">0 m</span></div>
         <div className="hud-xp">
-          <div className="hud-xp-row"><span className="hud-kicker">{nextZone ? `NEXT: ${nextZone.name.toUpperCase()}` : "MAX DEPTH"}</span><b>{xp} XP</b></div>
-          <div className="xp-bar"><span style={{ width: `${xpPct}%` }} /></div>
+          <div className="hud-xp-row">
+            <span className="hud-kicker">{!nextZone ? "DEEPEST ZONE" : passedHere ? `${nextZone.name.toUpperCase()} UNLOCKED` : allScanned ? "CHECKPOINT READY · SWIM TO THE BOTTOM" : `SCAN ALL ${zone.species.length} TO UNLOCK CHECKPOINT`}</span>
+            <b>{xp} XP</b>
+          </div>
+          <div className="xp-bar"><span style={{ width: `${unlockPct}%` }} /></div>
         </div>
         <button className="hud-btn" onClick={() => { const m = !muted; setMuted(m); oceanAudio.setMuted(m); }} aria-label={muted ? "Unmute ocean sounds" : "Mute ocean sounds"}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
       </header>
@@ -434,15 +448,19 @@ export default function Dive() {
       <ol className="depth-rail" aria-label="Ocean zones">
         {zones.map((z, i) => (
           <li key={z.id} className={`${i === zoneIndex ? "here" : ""} ${i > maxZone ? "locked" : ""}`}>
-            <button onClick={() => changeZone(i)} title={`${z.name} · ${z.depthLabel}${i > maxZone ? ` · ${z.xpRequired} XP` : ""}`}><i />{i > maxZone ? <Lock size={10} /> : z.level}</button>
+            <button onClick={() => changeZone(i)} title={`${z.name} · ${z.depthLabel}${i > maxZone ? " · locked: pass the checkpoint above it" : ""}`}><i />{i > maxZone ? <Lock size={10} /> : z.level}</button>
           </li>
         ))}
       </ol>
 
       {edge === "bottom" && nextZone && (
-        <button className={`edge-prompt bottom ${nextUnlocked ? "" : "locked"}`} onClick={() => changeZone(zoneIndex + 1)}>
-          {nextUnlocked ? <><ArrowDown size={16} /> Dive deeper into the {nextZone.name} <kbd>Space</kbd></> : <><Lock size={14} /> {nextZone.name} unlocks at {nextZone.xpRequired} XP</>}
-        </button>
+        nextUnlocked ? (
+          <button className="edge-prompt bottom" onClick={() => changeZone(zoneIndex + 1)}><ArrowDown size={16} /> Dive deeper into the {nextZone.name} <kbd>Space</kbd></button>
+        ) : allScanned ? (
+          <button className="edge-prompt bottom checkpoint-ready" onClick={() => setCheckpointOpen(true)}><ShieldCheck size={16} /> Take the {zone.name} checkpoint to unlock the {nextZone.name} <kbd>Space</kbd></button>
+        ) : (
+          <button className="edge-prompt bottom locked" onClick={() => oceanAudio.sfx("lock")}><Lock size={14} /> Scan every creature here first ({foundHere}/{zone.species.length}), then pass the checkpoint</button>
+        )
       )}
       {edge === "top" && zoneIndex > 0 && (
         <button className="edge-prompt top" onClick={() => changeZone(zoneIndex - 1)}><ArrowUp size={16} /> Swim up to the {zones[zoneIndex - 1].name} <kbd>Space</kbd></button>
@@ -462,6 +480,17 @@ export default function Dive() {
 
       <Companion ref={companion} state={state} aiOnline={aiOnline} focusSpeciesId={cardId ?? near ?? undefined} onSnapshot={apply} onLine={onLine}
         onToggleVoice={async (on) => { try { apply(await api.updateDiver({ voiceOn: on })); } catch { /* ignore */ } }} />
+
+      {checkpointOpen && (
+        <CheckpointQuiz
+          onClose={() => setCheckpointOpen(false)}
+          onSnapshot={apply}
+          onDiveDeeper={() => void changeZone(zoneIndex + 1)}
+          onResult={(r, zoneName) => companion.current?.event(r.passed
+            ? `${state.diver.name} just PASSED the ${zoneName} checkpoint with ${r.score}/${r.total}${r.unlocked ? ` and unlocked the ${r.unlocked}` : ""}. Celebrate like a proud friend in one or two lines.`
+            : `${state.diver.name} scored ${r.score}/${r.total} on the ${zoneName} checkpoint and needed ${r.passMark}. Encourage them warmly and suggest re-reading the cards they missed.`)}
+        />
+      )}
 
       {card && <SpeciesCard species={card} buddy={state.diver.companionName} onClose={() => setCardId(null)}
         onAsk={() => { setCardId(null); companion.current?.ask(`Tell me more about the ${card.name}! How does it survive down here?`); }}

@@ -136,12 +136,25 @@ export function findSpecies(id: string | undefined) {
   return null;
 }
 
-/** Highest zone index the player may enter at the given XP. */
-export function maxZoneIndex(xp: number) {
+/**
+ * Highest zone index the player may enter. A zone opens only after the player has passed the
+ * checkpoint of every zone above it (which itself requires scanning all of that zone's species).
+ */
+export function maxZoneIndex(state: Pick<PlayerState, "passedZones">) {
   let idx = 0;
-  zones.forEach((z, i) => { if (xp >= z.xpRequired) idx = i; });
+  while (idx < zones.length - 1 && state.passedZones?.includes(zones[idx].id)) idx++;
   return idx;
 }
+
+/** What still stands between the player and the next zone. */
+export function checkpointStatus(state: Pick<PlayerState, "discovered" | "passedZones">, zoneId: string) {
+  const zone = findZone(zoneId);
+  const scanned = zone.species.filter((s) => state.discovered.includes(s.id)).length;
+  return { zoneId: zone.id, scanned, total: zone.species.length, allScanned: scanned === zone.species.length, passed: Boolean(state.passedZones?.includes(zone.id)) };
+}
+
+/** Checkpoint pass mark: every question right, except zones with 4+ species allow one miss. */
+export const checkpointPassMark = (questions: number) => (questions >= 4 ? questions - 1 : questions);
 
 export type LearnerModel = {
   summary: string;
@@ -166,8 +179,21 @@ export type PlayerState = {
   zoneId: string;
   discovered: string[];
   quiz: { asked: number; correct: number };
+  /** Zone ids whose checkpoint quiz has been passed (unlocks the next zone). */
+  passedZones?: string[];
   learner: LearnerModel;
   updatedAt: string;
+};
+
+export type CheckpointQuestion = { question: string; options: string[]; speciesId: string };
+export type Checkpoint = { id: string; zoneId: string; questions: CheckpointQuestion[]; passMark: number };
+export type CheckpointResult = {
+  passed: boolean;
+  score: number;
+  total: number;
+  passMark: number;
+  results: { correct: boolean; correctIndex: number; explanation: string }[];
+  unlocked?: string;
 };
 
 export type Quiz = {

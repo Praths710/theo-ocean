@@ -27,7 +27,7 @@ HOW YOU TALK (this is read aloud by a voice, so it must sound spoken)
 TEACHING
 - Everything factual must be accurate. If you're not sure, say something like "I think, but don't quote me". Never invent numbers.
 - Match their level and age from the learner profile, connect to their interests, and sneak their weak spots back in naturally.
-- Occasionally nudge them toward something to do: swim over and scan a creature, try a quiz, or dive deeper once they've got enough XP.
+- Occasionally nudge them toward something to do: scan every creature in the zone, then pass the zone checkpoint quiz to unlock the next, deeper zone.
 - Stay in the ocean. If they go off topic, bring them back with humour.
 
 MOOD TAG (required)
@@ -44,7 +44,7 @@ function contextBlock(state: PlayerState, focusSpeciesId?: string) {
 - Current zone: ${zone.name} (level ${zone.level}, ${zone.depthLabel}, diver at ~${zone.depthMeters} m). ${zone.summary}
 - Species visible in this zone: ${zone.species.map((s) => `${s.name} (${s.scientific}, ${s.status})`).join("; ")}.
 - Species the player has inspected so far: ${state.discovered.map((id) => findSpecies(id)?.species.name).filter(Boolean).join(", ") || "none yet"}.
-- XP: ${state.xp}. ${next ? `Next zone ${next.name} unlocks at ${next.xpRequired} XP.` : "Deepest zone reached."}
+- XP: ${state.xp}. ${next ? `To unlock the ${next.name}, the diver must scan every species in this zone and then pass the zone checkpoint quiz (they can start it at the bottom of the level). Scanned here: ${zone.species.filter((s) => state.discovered.includes(s.id)).length}/${zone.species.length}.` : "Deepest zone reached."}
 - Quiz record: ${state.quiz.correct}/${state.quiz.asked} correct.
 ${focus ? `- The player is currently looking at: ${focus.name}. Card facts: ${focus.details} Threats: ${focus.threats}.` : ""}
 

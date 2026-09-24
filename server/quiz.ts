@@ -34,6 +34,18 @@ const TEMPLATES: Template[] = [
   { kind: "zone", build: (s, z) => ({ question: `In which ocean zone did you find the ${s.name}?`, correct: `${z.name} (${z.depthLabel})`, wrong: shuffle(zones.filter((o) => o.id !== z.id).map((o) => `${o.name} (${o.depthLabel})`)).slice(0, 3), explanation: `The ${s.name} is in the ${z.name}, ${z.depthLabel} down. ${z.summary.split(". ")[0]}.` }) },
 ];
 
+/** Zone checkpoint: one card-based question per species in the zone, varied question types. */
+export function buildCheckpoint(zoneId: string): Omit<BuiltQuiz, "key">[] {
+  const zone = zones.find((z) => z.id === zoneId) ?? zones[0];
+  const kinds = shuffle(TEMPLATES.filter((t) => t.kind !== "zone"));
+  return shuffle(zone.species).map((s, i) => {
+    const t = kinds[i % kinds.length];
+    const q = t.build(s, zone);
+    const options = shuffle([q.correct, ...q.wrong.slice(0, 3)]);
+    return { question: q.question, options, correctIndex: options.indexOf(q.correct), explanation: q.explanation, topic: `${s.name} ${t.kind}`, speciesId: s.id };
+  });
+}
+
 /**
  * Picks a species the player has already scanned (the focused one if given), then a
  * question type not asked recently. Returns null if nothing has been scanned yet.

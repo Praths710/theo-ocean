@@ -1,10 +1,12 @@
-﻿import "./env"; // must stay first: loads .env before other modules read process.env
+import "./env"; // must stay first: loads .env before other modules read process.env
 import express, { type Request, type Response } from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { XP, findSpecies, maxZoneIndex, zones } from "../shared/ocean";
+import { XP, checkpointPassMark, checkpointStatus, findSpecies, findZone, maxZoneIndex, zones, type CheckpointResult } from "../shared/ocean";
 import { aiConfigured, generateQuiz, gradeQuiz, streamCompanion } from "./ai";
+import { buildCheckpoint } from "./quiz";
+import { nanoid } from "nanoid";
 import { allowAttempt, currentUser, endSession, initAuth, register, requireAuth, startSession, verify } from "./auth";
 import { persistLabel } from "./persist";
 import { errorStatus, llmLabel } from "./llm";
@@ -35,8 +37,11 @@ function apiError(res: Response, err: unknown) {
 }
 
 const snapshot = (id: string) => {
-  const { state } = getPlayer(id);
-  return { state, maxZoneIndex: maxZoneIndex(state.xp) };
+  let { state } = getPlayer(id);
+  const max = maxZoneIndex(state);
+  // Players who reached a zone before checkpoints existed go back to the deepest zone they've earned.
+  if (zones.findIndex((z) => z.id === state.zoneId) > max) state = updatePlayer(id, (r) => { r.state.zoneId = zones[max].id; }).state;
+  return { state, maxZoneIndex: max, checkpoint: checkpointStatus(state, state.zoneId) };
 };
 
 function buildApi() {
@@ -104,7 +109,7 @@ function buildApi() {
     const idx = zones.findIndex((z) => z.id === req.body?.zoneId);
     const { state } = getPlayer(uid(req));
     if (idx < 0) return res.status(400).json({ error: "Unknown zone" });
-    if (idx > maxZoneIndex(state.xp)) return res.status(403).json({ error: `Need ${zones[idx].xpRequired} XP to dive to ${zones[idx].name}.` });
+    if (idx > maxZoneIndex(state)) return res.status(403).json({ error: `Pass the ${zones[Math.max(0, idx - 1)].name} checkpoint to reach the ${zones[idx].name}.` });
     updatePlayer(uid(req), (r) => { r.state.zoneId = zones[idx].id; });
     res.json(snapshot(uid(req)));
   });
@@ -162,6 +167,49 @@ function buildApi() {
     const gained = result.correct ? XP.quizCorrect : XP.quizAttempt;
     updatePlayer(uid(req), (r) => { r.state.xp += gained; });
     res.json({ ...result, gained, ...snapshot(uid(req)) });
+  });
+
+  // ----- Zone checkpoint: the only way to unlock the next zone -----
+  api.post("/checkpoint/start", (req, res) => {
+    const id = uid(req);
+    const { state } = getPlayer(id);
+    const status = checkpointStatus(state, state.zoneId);
+    const zone = findZone(state.zoneId);
+    if (!status.allScanned) {
+      return res.status(409).json({ error: `Scan every creature in the ${zone.name} first (${status.scanned}/${status.total} found). The checkpoint asks about each one.` });
+    }
+    const questions = buildCheckpoint(zone.id);
+    const cpId = nanoid(10);
+    updatePlayer(id, (r) => {
+      r.pendingCheckpoint = { id: cpId, zoneId: zone.id, answers: questions.map((q) => ({ correctIndex: q.correctIndex, explanation: q.explanation, topic: q.topic })) };
+    });
+    res.json({ checkpoint: { id: cpId, zoneId: zone.id, passMark: checkpointPassMark(questions.length), questions: questions.map((q) => ({ question: q.question, options: q.options, speciesId: q.speciesId })) } });
+  });
+
+  api.post("/checkpoint/submit", (req, res) => {
+    const id = uid(req);
+    const rec = getPlayer(id);
+    const pending = rec.pendingCheckpoint;
+    if (!pending || pending.id !== req.body?.id) return res.status(409).json({ error: "That checkpoint expired. Start it again." });
+    const answers: unknown[] = Array.isArray(req.body?.answers) ? req.body.answers : [];
+    const results = pending.answers.map((a, i) => ({ correct: Number(answers[i]) === a.correctIndex, correctIndex: a.correctIndex, explanation: a.explanation }));
+    const score = results.filter((r) => r.correct).length;
+    const passMark = checkpointPassMark(results.length);
+    const passed = score >= passMark;
+    const zoneIdx = zones.findIndex((z) => z.id === pending.zoneId);
+    const next = zones[zoneIdx + 1];
+    updatePlayer(id, (r) => {
+      r.pendingCheckpoint = undefined;
+      r.state.quiz.asked += results.length;
+      r.state.quiz.correct += score;
+      r.state.xp += score * XP.quizCorrect + (passed ? 100 : 0);
+      if (passed && !r.state.passedZones?.includes(pending.zoneId)) r.state.passedZones = [...(r.state.passedZones ?? []), pending.zoneId];
+      const missed = pending.answers.filter((_, i) => !results[i].correct).map((a) => a.topic);
+      r.history.push({ role: "user", content: `[GAME EVENT] The diver ${passed ? "PASSED" : "did not pass"} the ${zones[zoneIdx].name} checkpoint with ${score}/${results.length} (needed ${passMark}).${missed.length ? ` Missed: ${missed.join(", ")}.` : ""}` });
+      r.history.push({ role: "assistant", content: passed ? `[proud] You passed the ${zones[zoneIdx].name} checkpoint!` : `[gentle] So close. Let's review and try again.` });
+    });
+    const result: CheckpointResult = { passed, score, total: results.length, passMark, results, unlocked: passed && next ? next.name : undefined };
+    res.json({ ...result, ...snapshot(id) });
   });
 
   // ----- Speech to text (Whisper) -----

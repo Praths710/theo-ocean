@@ -13,6 +13,8 @@ type PlayerRecord = {
   pendingQuiz?: PendingQuiz;
   /** Keys ("speciesId:questionKind") of recently asked quiz questions, to avoid repeats. */
   recentQuiz?: string[];
+  /** Answers for the checkpoint currently in progress (never sent to the client). */
+  pendingCheckpoint?: { id: string; zoneId: string; answers: { correctIndex: number; explanation: string; topic: string }[] };
   turnsSinceReflection: number;
 };
 

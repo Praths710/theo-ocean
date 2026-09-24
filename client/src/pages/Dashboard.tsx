@@ -52,7 +52,7 @@ export default function Dashboard() {
     { name: "Scan your first creature", cur: Math.min(found, 1), max: 1, xp: 25 },
     { name: `Complete the Sunlit Reef logbook`, cur: sunlitFound, max: zones[0].species.length, xp: 100 },
     { name: "Answer 5 quizzes correctly", cur: Math.min(state.quiz.correct, 5), max: 5, xp: 200 },
-    { name: `Reach ${zones[Math.min(maxZone + 1, 4)].name}`, cur: Math.min(state.xp, zones[Math.min(maxZone + 1, 4)].xpRequired), max: zones[Math.min(maxZone + 1, 4)].xpRequired, xp: 0 },
+    { name: `Pass the ${zones[maxZone].name} checkpoint`, cur: state.passedZones?.includes(zones[maxZone].id) ? 1 : 0, max: 1, xp: 100 },
     { name: "Scan 10 species", cur: Math.min(found, 10), max: 10, xp: 250 },
   ].filter((m) => m.cur < m.max).slice(0, 3);
 
@@ -108,13 +108,13 @@ export default function Dashboard() {
               const got = z.species.filter((s) => state.discovered.includes(s.id)).length;
               return (
                 <li key={z.id} className={`level-node ${locked ? "locked" : ""} ${i === zoneIdx ? "current" : ""}`} style={{ ["--i" as string]: i }}>
-                  <button disabled={locked} onClick={() => dive(i)} className="node-orb" style={{ ["--zc" as string]: ["#3fb6d6", "#2a6f9e", "#3a3f8f", "#4a2f6b", "#5a1f3a"][i] }} aria-label={locked ? `${z.name}, locked until ${z.xpRequired} XP` : `Dive into ${z.name}`}>
+                  <button disabled={locked} onClick={() => dive(i)} className="node-orb" style={{ ["--zc" as string]: ["#3fb6d6", "#2a6f9e", "#3a3f8f", "#4a2f6b", "#5a1f3a"][i] }} aria-label={locked ? `${z.name}, locked until you pass the ${zones[i - 1].name} checkpoint` : `Dive into ${z.name}`}>
                     {locked ? <Lock size={18} /> : <span className="node-creature"><Creature art={speciesArt[ZONE_ICON[i]].art} /></span>}
                     <span className="node-num">{z.level}</span>
                   </button>
                   <div className="node-text">
                     <strong>{z.name}</strong>
-                    <span>{locked ? `🔒 ${z.xpRequired} XP` : z.depthLabel}</span>
+                    <span>{locked ? `🔒 Pass ${zones[i - 1].name} checkpoint` : state.passedZones?.includes(z.id) ? `${z.depthLabel} · ✓ passed` : z.depthLabel}</span>
                     {!locked && <span className="pips">{z.species.map((s) => <i key={s.id} className={state.discovered.includes(s.id) ? "on" : ""} />)}<em>{got}/{z.species.length}</em></span>}
                   </div>
                   {i === zoneIdx && <span className="you-are-here">YOU</span>}
