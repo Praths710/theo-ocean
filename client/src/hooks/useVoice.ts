@@ -3,7 +3,8 @@ import { oceanAudio } from "@/lib/oceanAudio";
 
 // Speech output: server voice (Gemini TTS / ElevenLabs) with mood-driven delivery;
 // falls back to the most natural browser voice available.
-// Speech input: browser Web Speech API (Chrome, Edge, Safari).
+// Speech input: recorded audio transcribed by Groq Whisper (accurate, works in Safari),
+// with the browser Web Speech API as a fallback.
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -103,9 +104,77 @@ export function useVoice(enabled: boolean) {
     }
   }, [enabled, stopSpeaking]);
 
+  // ---- Speech input: record + Whisper (accurate, works in Safari); browser recognition as fallback ----
+  const recorder = useRef<{ stop: () => void } | null>(null);
+  const whisperOff = useRef(false);
+
+  const listenWhisper = useCallback(async (onFinal: (text: string) => void) => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].find((m) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(m));
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+
+    // Auto-stop: after speech is heard, stop on ~1.3s of silence; give up if nothing said in 7s; hard cap 20s.
+    const ac = new AudioContext();
+    const src = ac.createMediaStreamSource(stream);
+    const an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
+    const buf = new Float32Array(an.fftSize);
+    let heard = false; let quietSince = performance.now(); const started = performance.now();
+    const timer = window.setInterval(() => {
+      an.getFloatTimeDomainData(buf);
+      let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      const now = performance.now();
+      if (rms > 0.02) { heard = true; quietSince = now; }
+      if ((heard && now - quietSince > 1300) || (!heard && now - started > 7000) || now - started > 20000) stop();
+    }, 100);
+
+    let stopped = false;
+    const stop = () => {
+      if (stopped) return; stopped = true;
+      clearInterval(timer);
+      if (rec.state !== "inactive") rec.stop();
+    };
+    recorder.current = { stop };
+    oceanAudio.duck(true);
+    setListening(true);
+    setInterim("Listening…");
+
+    rec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      void ac.close();
+      oceanAudio.duck(false);
+      recorder.current = null;
+      if (!heard) { setListening(false); setInterim(""); return; }
+      setInterim("Got it, one sec…");
+      try {
+        const blob = new Blob(chunks, { type: rec.mimeType || mime || "audio/webm" });
+        const res = await fetch("/api/stt", { method: "POST", credentials: "same-origin", headers: { "Content-Type": blob.type.split(";")[0] }, body: blob });
+        if (res.status === 503) whisperOff.current = true;
+        const json = (await res.json().catch(() => ({}))) as { text?: string };
+        if (json.text?.trim()) onFinal(json.text.trim());
+      } finally {
+        setListening(false);
+        setInterim("");
+      }
+    };
+    rec.start(250);
+  }, []);
+
   const listen = useCallback((onFinal: (text: string) => void) => {
+    const canRecord = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+    if (canRecord && !whisperOff.current) {
+      stopSpeaking(); // barge-in: user talking interrupts the companion
+      listenWhisper(onFinal).catch(() => { setListening(false); setInterim(""); oceanAudio.duck(false); });
+      return true;
+    }
+    return browserListen(onFinal);
+  }, [stopSpeaking, listenWhisper]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const browserListen = (onFinal: (text: string) => void) => {
     if (!Recognition) return false;
-    stopSpeaking(); // barge-in: user talking interrupts the companion
+    stopSpeaking();
     recog.current?.abort();
     const r = new Recognition();
     r.lang = "en-US";
@@ -131,9 +200,10 @@ export function useVoice(enabled: boolean) {
     r.start();
     setListening(true);
     return true;
-  }, [stopSpeaking]);
+  };
 
-  const stopListening = useCallback(() => recog.current?.stop(), []);
+  const stopListening = useCallback(() => { recorder.current?.stop(); recog.current?.stop(); }, []);
 
-  return { speak, stopSpeaking, speaking, listen, stopListening, listening, interim, canListen: Boolean(Recognition) };
+  const canListen = Boolean(Recognition) || (typeof MediaRecorder !== "undefined" && typeof navigator !== "undefined" && !!navigator.mediaDevices);
+  return { speak, stopSpeaking, speaking, listen, stopListening, listening, interim, canListen };
 }

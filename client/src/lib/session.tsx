@@ -1,4 +1,4 @@
-﻿import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { zones } from "@shared/ocean";
 import { api, type PlayerSnapshot, type User } from "./api";
@@ -36,7 +36,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const apply = useCallback((s: PlayerSnapshot, gained?: number) => {
     setSnap((prev) => {
       if (prev && s.maxZoneIndex > prev.maxZoneIndex) {
-        toast.success(`New depth unlocked: ${zones[s.maxZoneIndex].name}`, { description: "Swim to the bottom or hit â€œDive deeperâ€." });
+        toast.success(`New depth unlocked: ${zones[s.maxZoneIndex].name}`, { description: "Swim to the bottom or hit “Dive deeper”." });
       }
       return s;
     });

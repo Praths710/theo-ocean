@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpRight, Brain, Home, Lock, MessageCircle, Mic, Volume2, VolumeX, X } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -411,7 +411,7 @@ export default function Dive() {
       <header className="hud-top">
         <Link href="/" className="hud-btn" aria-label="Back to base"><Home size={16} /></Link>
         <div className="hud-zone">
-          <span className="hud-kicker">LEVEL {zone.level} Â· {foundHere}/{zone.species.length} FOUND</span>
+          <span className="hud-kicker">LEVEL {zone.level} · {foundHere}/{zone.species.length} FOUND</span>
           <strong>{zone.name}</strong>
         </div>
         <div className="radar" aria-label="Level radar">
@@ -434,7 +434,7 @@ export default function Dive() {
       <ol className="depth-rail" aria-label="Ocean zones">
         {zones.map((z, i) => (
           <li key={z.id} className={`${i === zoneIndex ? "here" : ""} ${i > maxZone ? "locked" : ""}`}>
-            <button onClick={() => changeZone(i)} title={`${z.name} Â· ${z.depthLabel}${i > maxZone ? ` Â· ${z.xpRequired} XP` : ""}`}><i />{i > maxZone ? <Lock size={10} /> : z.level}</button>
+            <button onClick={() => changeZone(i)} title={`${z.name} · ${z.depthLabel}${i > maxZone ? ` · ${z.xpRequired} XP` : ""}`}><i />{i > maxZone ? <Lock size={10} /> : z.level}</button>
           </li>
         ))}
       </ol>
@@ -448,7 +448,7 @@ export default function Dive() {
         <button className="edge-prompt top" onClick={() => changeZone(zoneIndex - 1)}><ArrowUp size={16} /> Swim up to the {zones[zoneIndex - 1].name} <kbd>Space</kbd></button>
       )}
 
-      <div className="controls-hint"><kbd>A</kbd><kbd>D</kbd> / <kbd>â†</kbd><kbd>â†’</kbd> swim Â· hold mouse to steer Â· <kbd>E</kbd> scan Â· <kbd>Q</kbd> quiz Â· <kbd>M</kbd> talk</div>
+      <div className="controls-hint"><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> swim · hold mouse to steer · <kbd>E</kbd> scan · <kbd>Q</kbd> quiz · <kbd>M</kbd> talk</div>
 
       {lineVisible && line.text && (
         <div className="subtitle" style={{ ["--mood" as string]: MOOD_COLORS[line.mood] ?? MOOD_COLORS.curious }} aria-live="polite">
@@ -456,7 +456,7 @@ export default function Dive() {
           <p><b>{state.diver.companionName}</b>{line.text}</p>
         </div>
       )}
-      {line.listening && <div className="listening-pill"><Mic size={14} /> Listeningâ€¦</div>}
+      {line.listening && <div className="listening-pill"><Mic size={14} /> Listening…</div>}
 
       <div className="transition-veil" aria-hidden="true" />
 
@@ -478,7 +478,7 @@ function SpeciesCard({ species, buddy, onClose, onAsk, onQuiz }: { species: Spec
         <button className="profile-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
         <div className={`profile-art ${species.tone}`}><div className="profile-creature"><Creature art={a.art} /></div><span className="art-grid" /></div>
         <div className="profile-copy">
-          <div className="eyebrow"><span className="eyebrow-line" />SCAN COMPLETE Â· QUIZ MATERIAL</div>
+          <div className="eyebrow"><span className="eyebrow-line" />SCAN COMPLETE · QUIZ MATERIAL</div>
           <h2 id="sp-title">{species.name}</h2>
           <p className="profile-scientific">{species.scientific}</p>
           <span className="status-chip">{species.status}</span>

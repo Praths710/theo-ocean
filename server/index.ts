@@ -10,6 +10,7 @@ import { persistLabel } from "./persist";
 import { errorStatus, llmLabel } from "./llm";
 import { getPlayer, initStore, resetPlayer, updatePlayer } from "./store";
 import { synthesize, ttsConfigured, ttsLabel } from "./tts";
+import { sttConfigured, transcribe } from "./stt";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,7 +43,7 @@ function buildApi() {
   const api = express.Router();
   api.use(express.json({ limit: "64kb" }));
 
-  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured(), storage: persistLabel().startsWith("postgres") ? "database" : "files" }));
+  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured(), whisper: sttConfigured(), storage: persistLabel().startsWith("postgres") ? "database" : "files" }));
 
   // ----- Accounts -----
   api.post("/auth/register", (req, res) => {
@@ -161,6 +162,18 @@ function buildApi() {
     const gained = result.correct ? XP.quizCorrect : XP.quizAttempt;
     updatePlayer(uid(req), (r) => { r.state.xp += gained; });
     res.json({ ...result, gained, ...snapshot(uid(req)) });
+  });
+
+  // ----- Speech to text (Whisper) -----
+  api.post("/stt", express.raw({ type: ["audio/*", "application/octet-stream"], limit: "8mb" }), async (req, res) => {
+    const audio = req.body as Buffer;
+    if (!Buffer.isBuffer(audio) || audio.length < 800) return res.json({ text: "" });
+    try {
+      res.json({ text: await transcribe(audio, String(req.headers["content-type"] ?? "audio/webm")) });
+    } catch (err) {
+      console.error("[stt]", (err as Error).message);
+      res.status(errorStatus(err) === 503 ? 503 : 502).json({ error: "Couldn't hear that clearly. Try again?" });
+    }
   });
 
   // ----- Voice -----

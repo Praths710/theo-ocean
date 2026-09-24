@@ -38,20 +38,35 @@ float caustic(vec2 uv, float t){
   return clamp(pow(abs(c), 8.0), 0.0, 1.0);
 }
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 w = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i), hash(i+vec2(1.0,0.0)), w.x), mix(hash(i+vec2(0.0,1.0)), hash(i+vec2(1.0,1.0)), w.x), w.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int k = 0; k < 4; k++) { v += a*vnoise(p); p *= 2.03; a *= 0.5; } return v; }
 void main(){
   vec2 uv = vUv; float y = 1.0 - uv.y; float aspect = uRes.x/uRes.y;
-  vec3 col = mix(uTop, uBot, smoothstep(0.0, 1.05, y));
   vec2 rp = vec2((uv.x - 0.5)*aspect + uCam*0.45, y);
-  float ang = rp.x + y*0.42;
-  float rays = pow(max(0.0, sin(ang*9.0 + uTime*0.15)), 6.0)*0.6
-             + pow(max(0.0, sin(ang*17.0 - uTime*0.22 + 1.3)), 8.0)*0.45
-             + pow(max(0.0, sin(ang*4.0 + uTime*0.07 + 2.1)), 4.0)*0.5;
-  rays *= smoothstep(1.0, 0.0, y) * (0.65 + 0.35*sin(uTime*0.3 + rp.x*3.0));
-  col += vec3(0.55,0.85,0.95) * rays * 0.26 * uLight;
+  // Base water colour with depth, plus light absorption (reds fade first, water turns blue-green).
+  vec3 col = mix(uTop, uBot, smoothstep(0.0, 1.05, y));
+  col *= mix(vec3(1.0), vec3(0.82, 0.97, 1.04), y);
+  // Volumetric light shafts: slanted, soft, broken up by drifting particulate (fbm), not clean stripes.
+  float ang = rp.x + y*0.38;
+  float shafts = smoothstep(0.52, 0.95, fbm(vec2(ang*5.0, uTime*0.06)))
+               + 0.7*smoothstep(0.58, 0.98, fbm(vec2(ang*11.0 + 7.3, uTime*0.09)));
+  shafts *= smoothstep(1.0, 0.02, y) * (0.55 + 0.45*fbm(vec2(rp.x*2.5, y*4.0 - uTime*0.05)));
+  col += vec3(0.62, 0.9, 1.0) * shafts * 0.34 * uLight;
+  // Caustic net near the surface, fading with depth.
   float c = caustic(vec2(rp.x*1.1, y*1.5) + vec2(uTime*0.01, 0.0), uTime*0.32 + 23.0);
-  col += vec3(0.55,0.95,1.0) * c * 0.32 * uLight * smoothstep(0.8, 0.0, y);
-  float surf = smoothstep(0.07, 0.0, y) * (0.5 + 0.5*sin(rp.x*38.0 + uTime*2.0 + sin(rp.x*7.0+uTime)*2.0));
-  col += vec3(0.85,1.0,1.0) * surf * 0.28 * uLight;
+  col += vec3(0.55,0.95,1.0) * c * 0.28 * uLight * smoothstep(0.7, 0.0, y);
+  // Caustics dancing on the sandy seafloor (sunlit reef).
+  float floorBand = smoothstep(0.84, 0.96, y);
+  float c2 = caustic(vec2(rp.x*1.7, y*2.6), uTime*0.42 + 11.0);
+  col += vec3(0.55,0.9,0.9) * c2 * 0.3 * uLight * floorBand;
+  // Surface seen from below: bright, rippling, with a glowing "Snell's window".
+  float ripple = fbm(vec2(rp.x*9.0 + uTime*0.4, uTime*0.25));
+  float surf = smoothstep(0.08, 0.0, y) * (0.35 + 0.65*ripple);
+  float snell = exp(-pow((uv.x - 0.5)*1.6, 2.0) * 3.0) * smoothstep(0.35, 0.0, y);
+  col += vec3(0.85,1.0,1.0) * (surf*0.35 + snell*0.12) * uLight;
+  // Drifting murk.
+  col = mix(col, uBot * 1.15, fbm(rp*1.4 + vec2(uTime*0.015, uTime*0.01)) * 0.16);
   vec2 d = vec2((uv.x - uDiver.x)*aspect, y - uDiver.y); // uDiver is in screen space
   float dist = length(d);
   vec2 dir = normalize(vec2(uFacing, 0.18));
@@ -114,7 +129,7 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
     const resize = () => {
       const el = glRef.current!.parentElement!;
       W = el.clientWidth; H = el.clientHeight;
-      const s = Math.min(window.devicePixelRatio, 1) * 0.75; // shader at reduced res, it's soft anyway
+      const s = Math.min(window.devicePixelRatio, 1) * (W < 900 ? 0.5 : 0.75); // shader at reduced res (it is soft); lighter on phones
       glRef.current!.width = Math.max(1, Math.floor(W * s)); glRef.current!.height = Math.max(1, Math.floor(H * s));
       const d = Math.min(window.devicePixelRatio, 2);
       fxRef.current!.width = W * d; fxRef.current!.height = H * d;
