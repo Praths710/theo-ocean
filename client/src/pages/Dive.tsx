@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { zones, type Species } from "@shared/ocean";
 import OceanBackdrop, { type DiverProbe, type OceanHandle } from "@/components/ocean/OceanBackdrop";
 import { SeascapeStrip } from "@/components/ocean/Seascape";
+import Ocean3D from "@/three/Ocean3D";
 import Diver from "@/components/art/Diver";
 import Creature, { type Art } from "@/components/art/Creature";
 import { speciesArt } from "@/components/art/speciesArt";
@@ -68,6 +69,10 @@ export default function Dive() {
   const [cardId, setCardId] = useState<string | null>(null);
   const [checkpointOpen, setCheckpointOpen] = useState(false);
   const [scanning, setScanning] = useState<string | null>(null);
+  // 3D models that have loaded: their 2D illustration is hidden (the DOM element stays as the click target).
+  const [models3d, setModels3d] = useState<Record<string, boolean>>({});
+  const onModelReady = useCallback((id: string) => setModels3d((m) => (m[id] ? m : { ...m, [id]: true })), []);
+  const webgl2 = useMemo(() => { try { return !!document.createElement("canvas").getContext("webgl2"); } catch { return false; } }, []);
   const [transition, setTransition] = useState<"down" | "up" | null>(null);
   const [muted, setMuted] = useState(oceanAudio.isMuted());
   const [line, setLine] = useState({ text: "", mood: "curious", speaking: false, listening: false, thinking: false });
@@ -376,14 +381,19 @@ export default function Dive() {
         onPointerLeave={() => (pointer.current = null)}
       >
         <OceanBackdrop ref={ocean} zoneIndex={zoneIndex} diver={probe} camera={camera} />
-        <div ref={farEl} className="parallax-far">
-          <SeascapeStrip zoneIndex={zoneIndex} layer="far" tiles={Math.ceil(WORLD_SCREENS * FAR_PARALLAX) + 2} tileWidth={view.w} />
-        </div>
+        {webgl2 ? (
+          <Ocean3D key={`${zone.id}-${view.w}x${view.h}`} zoneIndex={zoneIndex} view={view} worldW={worldW} camera={camera} body={body} swimmers={swimmers}
+            speciesIds={zone.species.map((s) => s.id)} onModelReady={onModelReady} suit={`hsl(${(178 + state.diver.suitHue) % 360}, 60%, 42%)`} />
+        ) : (
+          <div ref={farEl} className="parallax-far">
+            <SeascapeStrip zoneIndex={zoneIndex} layer="far" tiles={Math.ceil(WORLD_SCREENS * FAR_PARALLAX) + 2} tileWidth={view.w} />
+          </div>
+        )}
 
         <div ref={worldEl} className="world" style={{ width: worldW }}>
-          <SeascapeStrip zoneIndex={zoneIndex} layer="near" tiles={WORLD_SCREENS} tileWidth={view.w} />
+          {!webgl2 && <SeascapeStrip zoneIndex={zoneIndex} layer="near" tiles={WORLD_SCREENS} tileWidth={view.w} />}
 
-          {SCHOOLS[zoneIndex].map((sc, si) => (
+          {!webgl2 && SCHOOLS[zoneIndex].map((sc, si) => (
             <div key={`school-${zoneIndex}-${si}`} className="school" aria-hidden="true">
               {Array.from({ length: sc.count }, (_, mi) => (
                 <div key={mi} className="school-fish" style={{ width: sc.size }} ref={(el) => { (schoolEls.current[si] ??= [])[mi] = el; }}>
@@ -400,7 +410,7 @@ export default function Dive() {
               <div
                 key={s.id}
                 ref={(el) => { if (el) swimmerEls.current.set(s.id, el); else swimmerEls.current.delete(s.id); }}
-                className={`swimmer ${near === s.id ? "near" : ""} ${scanning === s.id ? "scanning" : ""} ${found ? "found" : ""} behavior-${a.behavior}`}
+                className={`swimmer ${near === s.id ? "near" : ""} ${scanning === s.id ? "scanning" : ""} ${found ? "found" : ""} ${models3d[s.id] ? "has3d" : ""} behavior-${a.behavior}`}
                 style={{ width: Math.min(a.width, view.w * 0.4) }}
                 onPointerDown={(e) => { e.stopPropagation(); oceanAudio.sfx("click"); if (near === s.id) void scan(s.id); else follow.current = s.id; }}
                 role="button"
@@ -412,7 +422,7 @@ export default function Dive() {
             );
           })}
 
-          <div ref={diverEl} className="player-diver" style={{ width: DIVER_W, height: DIVER_H }}>
+          <div ref={diverEl} className={`player-diver ${models3d.diver ? "has3d" : ""}`} style={{ width: DIVER_W, height: DIVER_H }}>
             <Diver suitHue={state.diver.suitHue} />
           </div>
         </div>

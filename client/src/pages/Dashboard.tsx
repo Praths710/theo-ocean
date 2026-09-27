@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Award, Brain, Check, Fish, Gem, Lock, LogOut, Play, RotateCcw, Shirt, Star, Target, Trophy, X } from "lucide-react";
+import { Award, Brain, Check, Fish, Gem, Info, Lock, LogOut, Play, RotateCcw, Shirt, Star, Target, Trophy, X } from "lucide-react";
+import Credits from "@/components/Credits";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { zones } from "@shared/ocean";
@@ -28,6 +29,7 @@ export default function Dashboard() {
   const { user, snap, apply, logout, aiOnline } = useSession();
   const [, navigate] = useLocation();
   const [locker, setLocker] = useState(false);
+  const [credits, setCredits] = useState(false);
   const state = snap!.state;
   const maxZone = snap!.maxZoneIndex;
   const zoneIdx = Math.max(0, zones.findIndex((z) => z.id === state.zoneId));
@@ -93,6 +95,7 @@ export default function Dashboard() {
           <span className="coin trophies" title="Badges"><Trophy size={15} /><b>{badges.filter((b) => b.got).length}</b></span>
         </div>
         <div className="top-buttons">
+          <button className="round-btn" onClick={() => setCredits(true)} aria-label="Credits" title="Credits"><Info size={17} /></button>
           <button className="round-btn" onClick={() => setLocker(true)} aria-label="Customize diver" title="Customize diver"><Shirt size={17} /></button>
           <button className="round-btn" onClick={() => logout()} aria-label="Log out" title={`Log out ${user!.username}`}><LogOut size={17} /></button>
         </div>
@@ -198,6 +201,7 @@ export default function Dashboard() {
       </section>
 
       {locker && <Locker onClose={() => setLocker(false)} />}
+      {credits && <Credits onClose={() => setCredits(false)} />}
     </main>
   );
 }

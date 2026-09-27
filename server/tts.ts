@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 
-// Companion voice, best available first:
-//   1. Gemini TTS (free tier, natural + emotional) when GEMINI_API_KEY is set
-//   2. ElevenLabs when ELEVENLABS_API_KEY is set
-//   3. otherwise 204 → the browser's built-in speechSynthesis
+// Companion voice, best available first (the client sends one sentence at a time):
+//   1. Groq Orpheus (GROQ_API_KEY): fast and expressive
+//   2. Gemini TTS, only with GEMINI_TTS=on (natural, but ~7s per line)
+//   3. ElevenLabs when ELEVENLABS_API_KEY is set
+//   4. otherwise 204 → the browser's built-in speechSynthesis
 // Returns audio bytes + mime type, or null to tell the client to use the browser voice.
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
@@ -12,8 +13,8 @@ const ELEVEN_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVEN_VOICE = process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM";
 const ELEVEN_MODEL = process.env.ELEVENLABS_MODEL ?? "eleven_flash_v2_5";
 
-export const ttsConfigured = () => Boolean(GEMINI_KEY || ELEVEN_KEY);
-export const ttsLabel = () => (GEMINI_KEY ? "Gemini voice" : ELEVEN_KEY ? "ElevenLabs" : "browser");
+export const ttsConfigured = () => Boolean(process.env.GROQ_API_KEY || (GEMINI_KEY && process.env.GEMINI_TTS === "on") || ELEVEN_KEY);
+export const ttsLabel = () => (process.env.GROQ_API_KEY ? "Groq voice" : GEMINI_KEY && process.env.GEMINI_TTS === "on" ? "Gemini voice" : ELEVEN_KEY ? "ElevenLabs" : "browser");
 
 // Voice per companion "mood" style. Leda = youthful, bright; tweak with GEMINI_TTS_VOICE.
 const VOICE = process.env.GEMINI_TTS_VOICE ?? "Leda";
@@ -84,13 +85,43 @@ async function elevenTts(text: string) {
   return { data: Buffer.from(await res.arrayBuffer()), mime: "audio/mpeg" };
 }
 
+// ---- Groq Orpheus: fast, expressive; the client sends one sentence at a time (max 200 chars) ----
+const GROQ_KEY = process.env.GROQ_API_KEY;
+const GROQ_VOICE = process.env.GROQ_TTS_VOICE ?? "hannah";
+const ORPHEUS_TAG: Record<string, string> = { excited: "[excited] ", amazed: "[excited] ", playful: "[cheerful] ", proud: "[cheerful] ", spooky: "[whisper] ", gentle: "[softly] ", calm: "[softly] ", curious: "" };
+let groqCooldownUntil = 0;
+
+async function groqTts(text: string, mood: string): Promise<{ data: Buffer; mime: string } | null> {
+  if (!GROQ_KEY || Date.now() < groqCooldownUntil) return null;
+  const tag = ORPHEUS_TAG[mood] ?? "";
+  const res = await fetch("https://api.groq.com/openai/v1/audio/speech", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${GROQ_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "canopylabs/orpheus-v1-english", voice: GROQ_VOICE, input: (tag + text).slice(0, 200), response_format: "wav" }),
+    signal: AbortSignal.timeout(6000),
+  }).catch(() => null);
+  if (!res) return null;
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    // Terms not accepted / quota / plan limits: rest, and let the browser voice take over meanwhile.
+    groqCooldownUntil = Date.now() + (/terms/i.test(body) ? 10 * 60_000 : 60_000);
+    console.warn(`[tts] groq ${res.status}: ${body.slice(0, 160)}`);
+    return null;
+  }
+  return { data: Buffer.from(await res.arrayBuffer()), mime: "audio/wav" };
+}
+
+export const groqVoiceReady = () => Boolean(GROQ_KEY) && Date.now() >= groqCooldownUntil;
+
 export async function synthesize(rawText: string, mood = "curious"): Promise<{ data: Buffer; mime: string } | null> {
   const text = rawText.slice(0, 900);
   const key = crypto.createHash("sha1").update(`${mood}|${text}`).digest("hex");
   const hit = cache.get(key);
   if (hit) return hit;
   let out: { data: Buffer; mime: string } | null = null;
-  if (GEMINI_KEY) out = await geminiTts(text, mood);
+  if (GROQ_KEY && text.length <= 200) out = await groqTts(text, mood);
+  // Gemini's voice is natural but takes ~7s per line, so it's opt-in (GEMINI_TTS=on).
+  if (!out && GEMINI_KEY && process.env.GEMINI_TTS === "on") out = await geminiTts(text, mood);
   if (!out && ELEVEN_KEY) out = await elevenTts(text).catch(() => null);
   if (out) remember(key, out);
   return out;

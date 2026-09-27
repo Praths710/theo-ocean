@@ -1,0 +1,321 @@
+{
+  "amphipod": {
+    "file": "/models/amphipod.glb",
+    "bytes": 284468,
+    "tris": 29955,
+    "size": [
+      57.6296,
+      42.2774,
+      47.7462
+    ],
+    "center": [
+      -20.5524,
+      7.2003,
+      -1.8838
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "anglerfish": {
+    "file": "/models/anglerfish.glb",
+    "bytes": 414940,
+    "tris": 20000,
+    "size": [
+      0.02,
+      0.0142,
+      0.0107
+    ],
+    "center": [
+      0,
+      0,
+      0
+    ],
+    "clips": [
+      "Take 001"
+    ],
+    "skinned": true
+  },
+  "coral-reef": {
+    "file": "/models/coral-reef.glb",
+    "bytes": 728376,
+    "tris": 19879,
+    "size": [
+      1.5699,
+      1.3589,
+      1.5994
+    ],
+    "center": [
+      -0.0062,
+      0.0812,
+      -0.0065
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "diver": {
+    "file": "/models/diver.glb",
+    "bytes": 1068644,
+    "tris": 39992,
+    "size": [
+      1.7905,
+      1.7453,
+      0.7872
+    ],
+    "center": [
+      0,
+      0.8688,
+      0.0207
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "dumbo-octopus": {
+    "file": "/models/dumbo-octopus.glb",
+    "bytes": 148880,
+    "tris": 19998,
+    "size": [
+      3.7871,
+      1.9514,
+      4.1179
+    ],
+    "center": [
+      0,
+      0.8574,
+      0.2711
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "giant-squid": {
+    "file": "/models/giant-squid.glb",
+    "bytes": 794900,
+    "tris": 29988,
+    "size": [
+      1.0456,
+      1.0456,
+      0.9068
+    ],
+    "center": [
+      0,
+      0,
+      0
+    ],
+    "clips": [
+      "eyeballing",
+      "Eyes blink L",
+      "Eyes blink R",
+      "flapper",
+      "Idle"
+    ],
+    "skinned": true
+  },
+  "green-turtle": {
+    "file": "/models/green-turtle.glb",
+    "bytes": 631480,
+    "tris": 6876,
+    "size": [
+      3.4574,
+      3.0869,
+      0.8559
+    ],
+    "center": [
+      0,
+      0,
+      0
+    ],
+    "clips": [
+      "Armature|Tortue Anim"
+    ],
+    "skinned": true
+  },
+  "gulper-eel": {
+    "file": "/models/gulper-eel.glb",
+    "bytes": 257656,
+    "tris": 24837,
+    "size": [
+      0.1084,
+      0.1415,
+      0.9048
+    ],
+    "center": [
+      0.0001,
+      -0.0248,
+      -0.3242
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "hawksbill": {
+    "file": "/models/hawksbill.glb",
+    "bytes": 514196,
+    "tris": 11116,
+    "size": [
+      1.9416,
+      0.4768,
+      2
+    ],
+    "center": [
+      0,
+      0,
+      0
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "lanternfish": {
+    "file": "/models/lanternfish.glb",
+    "bytes": 894876,
+    "tris": 2586,
+    "size": [
+      8.5371,
+      9.0521,
+      23.9029
+    ],
+    "center": [
+      -0.7207,
+      0.3339,
+      -5.7197
+    ],
+    "clips": [
+      "Object_0"
+    ],
+    "skinned": false
+  },
+  "rocks": {
+    "file": "/models/rocks.glb",
+    "bytes": 2062676,
+    "tris": 24998,
+    "size": [
+      4000,
+      2637.2973,
+      4189.2193
+    ],
+    "center": [
+      1109.27,
+      949.1154,
+      82.2998
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "siphonophore": {
+    "file": "/models/siphonophore.glb",
+    "bytes": 676076,
+    "tris": 19995,
+    "size": [
+      0.7738,
+      2,
+      0.8184
+    ],
+    "center": [
+      0,
+      0,
+      0
+    ],
+    "clips": [
+      "200"
+    ],
+    "skinned": true
+  },
+  "sperm-whale": {
+    "file": "/models/sperm-whale.glb",
+    "bytes": 409560,
+    "tris": 20000,
+    "size": [
+      0.4512,
+      2,
+      0.344
+    ],
+    "center": [
+      0,
+      2.1992,
+      -1.7864
+    ],
+    "clips": [
+      "Armature|ArmatureAction",
+      "Armature|ArmatureAction.001"
+    ],
+    "skinned": true
+  },
+  "swordfish": {
+    "file": "/models/swordfish.glb",
+    "bytes": 130268,
+    "tris": 7626,
+    "size": [
+      4.5473,
+      1.6793,
+      1.4545
+    ],
+    "center": [
+      -0.0745,
+      0.0128,
+      0
+    ],
+    "clips": [],
+    "skinned": false
+  },
+  "vampire-squid": {
+    "file": "/models/vampire-squid.glb",
+    "bytes": 108300,
+    "tris": 458,
+    "size": [
+      1.3627,
+      2,
+      1.3219
+    ],
+    "center": [
+      0,
+      0,
+      0
+    ],
+    "clips": [
+      "Take 001"
+    ],
+    "skinned": true
+  },
+  "vaquita": {
+    "file": "/models/vaquita.glb",
+    "bytes": 221084,
+    "tris": 3160,
+    "size": [
+      2,
+      2,
+      0.8675
+    ],
+    "center": [
+      0,
+      0.0135,
+      0.0019
+    ],
+    "clips": [
+      "Idle",
+      "Swim",
+      "Dance",
+      "Rest",
+      "Backflip",
+      "Bite",
+      "Happy idle",
+      "Backflip"
+    ],
+    "skinned": true
+  },
+  "whale": {
+    "file": "/models/whale.glb",
+    "bytes": 458296,
+    "tris": 2424,
+    "size": [
+      283.4078,
+      130.7994,
+      573.1939
+    ],
+    "center": [
+      0.3211,
+      99.0183,
+      191.3381
+    ],
+    "clips": [
+      "Swimming"
+    ],
+    "skinned": true
+  }
+}

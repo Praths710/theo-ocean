@@ -117,3 +117,6 @@ data/
 
 # Local logs
 .manus-logs/
+
+# Original downloaded 3D models (optimized copies go to client/public/models)
+models-raw/

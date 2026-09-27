@@ -72,22 +72,24 @@ export default function Companion({ ref, state, aiOnline, focusSpeciesId, onSnap
     setBusy(true);
     if (!isEvent) push({ role: "you", text: message });
     const aiId = push({ role: "ai", text: "" });
-    voice.stopSpeaking();
+    voice.beginLine("curious");
     let text = "";
     let replyMood = "curious";
     setLine("");
     try {
       const snap = await streamChat({ message, isEvent, focusSpeciesId }, {
-        onMood: (m) => { replyMood = m; setMood(m); },
+        onMood: (m) => { replyMood = m; setMood(m); voice.setLineMood(m); },
         onDelta: (delta) => {
           text += delta;
           setLine(text);
+          voice.pushText(delta); // Coral starts talking after the first sentence, not the whole reply
           setMsgs((list) => list.map((m) => (m.id === aiId && m.role === "ai" ? { ...m, text: m.text + delta, mood: replyMood } : m)));
         },
       });
+      voice.endLine();
       if (snap) onSnapshot(snap);
-      void voice.speak(text, replyMood);
     } catch (err) {
+      voice.stopSpeaking();
       setMsgs((list) => list.map((m) => (m.id === aiId ? { id: aiId, role: "note", text: (err as Error).message } : m)));
       setLine("");
     } finally {

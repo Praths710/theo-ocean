@@ -10,6 +10,11 @@ import { SessionProvider, useSession } from "./lib/session";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Dive from "./pages/Dive";
+import { lazy, Suspense } from "react";
+
+// Dev-only 3D model orientation lab.
+const ModelLab = import.meta.env.DEV ? lazy(() => import("./pages/ModelLab")) : null;
+const DevPreview = import.meta.env.DEV ? lazy(() => import("./pages/DevPreview")) : null;
 
 function Splash() {
   return (
@@ -42,6 +47,8 @@ function Router() {
       <Route path="/login" component={LoginRoute} />
       <Route path="/" component={DashboardRoute} />
       <Route path="/dive" component={DiveRoute} />
+      {DevPreview && <Route path="/dev-preview">{() => <Suspense fallback={null}><DevPreview /></Suspense>}</Route>}
+      {ModelLab && <Route path="/lab">{() => <Suspense fallback={null}><ModelLab /></Suspense>}</Route>}
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

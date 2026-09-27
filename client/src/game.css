@@ -315,3 +315,11 @@ kbd { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 5px
 @media (prefers-reduced-motion: reduce) {
   .kelp, .diver-svg *, .creature-svg *, .drift, .porthole-diver, .porthole-fish, .edge-prompt { animation: none !important; }
 }
+
+/* 3D ocean layering: water shader (back) < 3D scene < particles/bubbles < DOM hit targets & labels */
+.ocean-gl { z-index: 0; }
+.ocean-fx { z-index: 2; }
+.dive .world { z-index: 3; }
+.swimmer.has3d .swimmer-art { opacity: 0; }
+.swimmer.has3d.near .swimmer-art, .swimmer.has3d.scanning .swimmer-art { opacity: 0; }
+.player-diver.has3d { opacity: 0; }

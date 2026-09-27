@@ -15,7 +15,9 @@ export type SessionValue = {
   apply: (s: PlayerSnapshot, gained?: number) => void;
 };
 
-const Ctx = createContext<SessionValue | null>(null);
+/** Exported so dev-only preview pages can supply sample data. */
+export const SessionContext = createContext<SessionValue | null>(null);
+const Ctx = SessionContext;
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionValue["status"]>("loading");

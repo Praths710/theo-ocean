@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { oceanAudio } from "@/lib/oceanAudio";
 
-// Speech output: server voice (Gemini TTS / ElevenLabs) with mood-driven delivery;
+// Speech output: streamed sentence by sentence through the server voice (Groq Orpheus) with mood-driven delivery;
 // falls back to the most natural browser voice available.
 // Speech input: recorded audio transcribed by Groq Whisper (accurate, works in Safari),
 // with the browser Web Speech API as a fallback.
@@ -48,6 +48,9 @@ export function useVoice(enabled: boolean) {
 
   const stopSpeaking = useCallback(() => {
     generation.current += 1;
+    queue.current = [];
+    playing.current = false;
+    pending.current = "";
     audio.current?.pause();
     audio.current = null;
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
@@ -60,49 +63,111 @@ export function useVoice(enabled: boolean) {
   const browserSpeak = (text: string, mood: string, gen: number) =>
     new Promise<void>((resolve) => {
       if (typeof speechSynthesis === "undefined" || gen !== generation.current) return resolve();
-      // One utterance per sentence: Chrome silently stops long utterances after ~15s.
-      const parts = text.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
-      const voice = pickBrowserVoice();
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = pickBrowserVoice();
       const p = MOOD_PROSODY[mood] ?? MOOD_PROSODY.curious;
-      const utterances = parts.map((part, i) => {
-        const u = new SpeechSynthesisUtterance(part);
-        u.voice = voice;
-        u.rate = p.rate; u.pitch = p.pitch;
-        if (i === parts.length - 1) { u.onend = () => resolve(); u.onerror = () => resolve(); }
-        return u;
-      });
-      setTimeout(() => utterances.forEach((u) => speechSynthesis.speak(u)), 60); // Chrome drops speak() called right after cancel()
+      u.rate = p.rate; u.pitch = p.pitch;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      setTimeout(() => speechSynthesis.speak(u), 30); // Chrome drops speak() called right after cancel()
     });
+
+  // ---- Streaming speech: each sentence is voiced as soon as it exists, while the rest is still being written.
+  // Every sentence's audio is requested immediately (in parallel) and played in order; any sentence
+  // whose server audio is slow or unavailable is read by the browser voice instead, so there's no dead air.
+  type Chunk = { text: string; audio: Promise<Blob | null> };
+  const queue = useRef<Chunk[]>([]);
+  const playing = useRef(false);
+  const pending = useRef("");
+  const lineMood = useRef("curious");
+
+  const fetchAudio = (text: string, mood: string): Promise<Blob | null> => {
+    if (Date.now() < serverVoiceSkipUntil.current) return Promise.resolve(null);
+    return fetch("/api/tts", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, mood }), signal: AbortSignal.timeout(5000) })
+      .then(async (res) => {
+        if (!res.ok || res.status === 204) { serverVoiceSkipUntil.current = Date.now() + 60_000; return null; }
+        return res.blob();
+      })
+      .catch(() => null);
+  };
+
+  const playBlob = (blob: Blob, gen: number) => new Promise<void>((resolve) => {
+    if (gen !== generation.current) return resolve();
+    const url = URL.createObjectURL(blob);
+    const el = new Audio(url);
+    audio.current = el;
+    el.onended = el.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+    el.play().catch(() => resolve());
+  });
+
+  const pump = useCallback(async () => {
+    if (playing.current) return;
+    playing.current = true;
+    const gen = generation.current;
+    setTalking(true);
+    while (queue.current.length && gen === generation.current) {
+      const c = queue.current.shift()!;
+      const blob = await c.audio;
+      if (gen !== generation.current) break;
+      if (blob) await playBlob(blob, gen);
+      else await browserSpeak(c.text, lineMood.current, gen);
+    }
+    if (gen === generation.current) { playing.current = false; setTalking(false); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Split into speakable pieces of at most ~190 characters (the fast voice's limit). */
+  const pieces = (s: string) => {
+    const out: string[] = [];
+    let rest = s.trim();
+    while (rest.length > 190) {
+      const cut = Math.max(rest.lastIndexOf(", ", 190), rest.lastIndexOf(" ", 190));
+      out.push(rest.slice(0, cut > 40 ? cut + 1 : 190).trim());
+      rest = rest.slice(cut > 40 ? cut + 1 : 190);
+    }
+    if (rest.trim()) out.push(rest.trim());
+    return out;
+  };
+
+  const enqueue = (text: string) => {
+    for (const p of pieces(text)) queue.current.push({ text: p, audio: fetchAudio(p, lineMood.current) });
+    void pump();
+  };
+
+  /** Start a new spoken line (interrupts whatever is playing). */
+  const beginLine = useCallback((mood = "curious") => {
+    stopSpeaking();
+    queue.current = [];
+    playing.current = false;
+    pending.current = "";
+    lineMood.current = mood;
+  }, [stopSpeaking]);
+
+  const setLineMood = useCallback((mood: string) => { lineMood.current = mood; }, []);
+
+  /** Feed streamed text; complete sentences are voiced immediately. */
+  const pushText = useCallback((delta: string) => {
+    if (!enabled) return;
+    pending.current += delta;
+    const re = /[^.!?]*[.!?]+["')\]]*\s+/g;
+    let m: RegExpExecArray | null;
+    let used = 0;
+    while ((m = re.exec(pending.current))) { if (m[0].trim()) enqueue(m[0]); used = re.lastIndex; }
+    pending.current = pending.current.slice(used);
+  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Voice whatever is left once the reply has finished streaming. */
+  const endLine = useCallback(() => {
+    if (enabled && pending.current.trim()) enqueue(pending.current);
+    pending.current = "";
+  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Speak one complete line with the given mood. Interrupts anything already playing. */
   const speak = useCallback(async (text: string, mood = "curious") => {
     if (!enabled || !text.trim()) return;
-    stopSpeaking();
-    const gen = generation.current;
-    setTalking(true);
-    try {
-      // Natural server voice if it answers quickly; otherwise don't keep the player waiting.
-      if (Date.now() > serverVoiceSkipUntil.current) {
-        const res = await fetch("/api/tts", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, mood }), signal: AbortSignal.timeout(9000) }).catch(() => null);
-        if (gen !== generation.current) return;
-        if (!res || !res.ok || res.status === 204) serverVoiceSkipUntil.current = Date.now() + 60_000; // rest a minute, browser voice meanwhile
-        if (res && res.ok && res.status !== 204) {
-          const url = URL.createObjectURL(await res.blob());
-          if (gen !== generation.current) return;
-          await new Promise<void>((resolve) => {
-            const el = new Audio(url);
-            audio.current = el;
-            el.onended = el.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-            el.play().catch(() => resolve());
-          });
-          return;
-        }
-      }
-      await browserSpeak(text, mood, gen);
-    } finally {
-      if (gen === generation.current) setTalking(false);
-    }
-  }, [enabled, stopSpeaking]);
+    beginLine(mood);
+    pushText(`${text} `);
+    endLine();
+  }, [enabled, beginLine, pushText, endLine]);
 
   // ---- Speech input: record + Whisper (accurate, works in Safari); browser recognition as fallback ----
   const recorder = useRef<{ stop: () => void } | null>(null);
@@ -205,5 +270,5 @@ export function useVoice(enabled: boolean) {
   const stopListening = useCallback(() => { recorder.current?.stop(); recog.current?.stop(); }, []);
 
   const canListen = Boolean(Recognition) || (typeof MediaRecorder !== "undefined" && typeof navigator !== "undefined" && !!navigator.mediaDevices);
-  return { speak, stopSpeaking, speaking, listen, stopListening, listening, interim, canListen };
+  return { speak, beginLine, setLineMood, pushText, endLine, stopSpeaking, speaking, listen, stopListening, listening, interim, canListen };
 }
