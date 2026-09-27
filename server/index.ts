@@ -8,7 +8,7 @@ import { aiConfigured, generateQuiz, gradeQuiz, streamCompanion } from "./ai";
 import { buildCheckpoint } from "./quiz";
 import { nanoid } from "nanoid";
 import { allowAttempt, currentUser, endSession, initAuth, register, requireAuth, startSession, verify } from "./auth";
-import { persistLabel } from "./persist";
+import { initPersist, persistLabel } from "./persist";
 import { errorStatus, llmLabel } from "./llm";
 import { getPlayer, initStore, resetPlayer, updatePlayer } from "./store";
 import { synthesize, ttsConfigured, ttsLabel, voiceStatus } from "./tts";
@@ -48,7 +48,7 @@ function buildApi() {
   const api = express.Router();
   api.use(express.json({ limit: "64kb" }));
 
-  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured(), whisper: sttConfigured(), storage: persistLabel().startsWith("postgres") ? "database" : "files", tts: voiceStatus() }));
+  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured(), whisper: sttConfigured(), storage: persistLabel().startsWith("postgres") ? "database" : persistLabel().includes("unreachable") ? "DATABASE UNREACHABLE - check DATABASE_URL" : "files", tts: voiceStatus() }));
 
   // ----- Accounts -----
   api.post("/auth/register", (req, res) => {
@@ -244,6 +244,7 @@ function buildApi() {
 }
 
 async function startServer() {
+  await initPersist();
   await Promise.all([initAuth(), initStore()]);
   const app = express();
   const server = createServer(app);

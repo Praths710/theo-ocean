@@ -8,14 +8,38 @@ import pg from "pg";
 
 const DATA_DIR = path.resolve(process.env.DATA_DIR ?? "data");
 const url = process.env.DATABASE_URL;
-const pool = url ? new pg.Pool({ connectionString: url, max: 3, ssl: /localhost|127\.0\.0\.1/.test(url) ? undefined : { rejectUnauthorized: false } }) : null;
+let pool = url ? new pg.Pool({ connectionString: url, max: 3, ssl: /localhost|127\.0\.0\.1/.test(url) ? undefined : { rejectUnauthorized: false } }) : null;
 
-export const persistLabel = () => (pool ? "postgres" : `files (${DATA_DIR})`);
+let dbError = "";
+export const persistLabel = () => (pool ? "postgres" : dbError ? `files (database unreachable: ${dbError})` : `files (${DATA_DIR})`);
 
 let ready: Promise<void> | null = null;
 function ensureTable() {
   ready ??= pool!.query("CREATE TABLE IF NOT EXISTS theo_docs (name text PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())").then(() => undefined);
   return ready;
+}
+
+/**
+ * Checks the database at startup (a few tries for a waking free-tier database). If it stays
+ * unreachable, e.g. a mistyped DATABASE_URL, the game still starts on temporary files instead
+ * of crashing, and /api/health reports the problem.
+ */
+export async function initPersist() {
+  if (!pool) return;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await ensureTable();
+      return;
+    } catch (err) {
+      ready = null;
+      dbError = (err as Error).message.replace(/postgres(ql)?:\/\/[^\s]*/g, "[url]").slice(0, 120);
+      console.error(`[persist] database attempt ${attempt} failed: ${dbError}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 4000));
+    }
+  }
+  console.error("[persist] DATABASE UNREACHABLE: progress is only kept until the next restart. Check DATABASE_URL.");
+  await pool.end().catch(() => {});
+  pool = null;
 }
 
 export async function loadDoc<T>(name: string, fallback: T): Promise<T> {
@@ -39,9 +63,10 @@ export function saveDoc(name: string, data: unknown) {
   timers.set(name, setTimeout(() => {
     timers.delete(name);
     const json = JSON.stringify(data);
-    if (pool) {
+    const db = pool;
+    if (db) {
       ensureTable()
-        .then(() => pool.query("INSERT INTO theo_docs (name, data, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, updated_at = now()", [name, json]))
+        .then(() => db.query("INSERT INTO theo_docs (name, data, updated_at) VALUES ($1, $2::jsonb, now()) ON CONFLICT (name) DO UPDATE SET data = EXCLUDED.data, updated_at = now()", [name, json]))
         .catch((err) => console.error(`[persist] saving ${name} failed:`, err.message));
       return;
     }
