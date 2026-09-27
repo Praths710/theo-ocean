@@ -90,6 +90,8 @@ const GROQ_KEY = process.env.GROQ_API_KEY;
 const GROQ_VOICE = process.env.GROQ_TTS_VOICE ?? "hannah";
 const ORPHEUS_TAG: Record<string, string> = { excited: "[excited] ", amazed: "[excited] ", playful: "[cheerful] ", proud: "[cheerful] ", spooky: "[whisper] ", gentle: "[softly] ", calm: "[softly] ", curious: "" };
 let groqCooldownUntil = 0;
+let groqLastError = "";
+export const voiceStatus = () => ({ voice: ttsLabel(), ready: groqVoiceReady(), lastError: groqLastError || undefined });
 
 async function groqTts(text: string, mood: string): Promise<{ data: Buffer; mime: string } | null> {
   if (!GROQ_KEY || Date.now() < groqCooldownUntil) return null;
@@ -100,14 +102,16 @@ async function groqTts(text: string, mood: string): Promise<{ data: Buffer; mime
     body: JSON.stringify({ model: "canopylabs/orpheus-v1-english", voice: GROQ_VOICE, input: (tag + text).slice(0, 200), response_format: "wav" }),
     signal: AbortSignal.timeout(6000),
   }).catch(() => null);
-  if (!res) return null;
+  if (!res) { groqLastError = "timeout"; return null; }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     // Terms not accepted / quota / plan limits: rest, and let the browser voice take over meanwhile.
     groqCooldownUntil = Date.now() + (/terms/i.test(body) ? 10 * 60_000 : 60_000);
-    console.warn(`[tts] groq ${res.status}: ${body.slice(0, 160)}`);
+    groqLastError = `${res.status}: ${body.replace(/gsk_\w+/g, "[key]").slice(0, 160)}`;
+    console.warn(`[tts] groq ${groqLastError}`);
     return null;
   }
+  groqLastError = "";
   return { data: Buffer.from(await res.arrayBuffer()), mime: "audio/wav" };
 }
 

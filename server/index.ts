@@ -11,7 +11,7 @@ import { allowAttempt, currentUser, endSession, initAuth, register, requireAuth,
 import { persistLabel } from "./persist";
 import { errorStatus, llmLabel } from "./llm";
 import { getPlayer, initStore, resetPlayer, updatePlayer } from "./store";
-import { synthesize, ttsConfigured, ttsLabel } from "./tts";
+import { synthesize, ttsConfigured, ttsLabel, voiceStatus } from "./tts";
 import { sttConfigured, transcribe } from "./stt";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,7 +48,7 @@ function buildApi() {
   const api = express.Router();
   api.use(express.json({ limit: "64kb" }));
 
-  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured(), whisper: sttConfigured(), storage: persistLabel().startsWith("postgres") ? "database" : "files" }));
+  api.get("/health", (_req, res) => res.json({ ok: true, ai: aiConfigured(), premiumVoice: ttsConfigured(), whisper: sttConfigured(), storage: persistLabel().startsWith("postgres") ? "database" : "files", tts: voiceStatus() }));
 
   // ----- Accounts -----
   api.post("/auth/register", (req, res) => {
