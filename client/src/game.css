@@ -305,7 +305,9 @@ kbd { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 5px
   .panel-progress, .panel-stats { grid-column: span 12; }
   .dash-username { display: none; }
   .locker { grid-template-columns: 1fr; }
-  .hud-xp { min-width: 0; flex: 1; }
+  .hud-xp { min-width: 0; flex: 1; padding: 8px 10px; }
+  .hud-xp-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .hud-xp-row .hud-kicker { font-size: 8px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .hud-zone strong { font-size: 14px; }
   .depth-rail, .controls-hint { display: none; }
   .login-card { padding: 26px 20px 20px; }
@@ -323,3 +325,11 @@ kbd { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 5px
 .swimmer.has3d .swimmer-art { opacity: 0; }
 .swimmer.has3d.near .swimmer-art, .swimmer.has3d.scanning .swimmer-art { opacity: 0; }
 .player-diver.has3d { opacity: 0; }
+
+/* 3D loading screen (shown instead of flat art that would pop into 3D) */
+.dive-loading { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, rgba(12, 70, 100, .55), rgba(2, 12, 22, .92)); backdrop-filter: blur(6px); animation: dive-loading-in 200ms ease-out; }
+.dive-loading-card { display: grid; gap: 12px; justify-items: center; text-align: center; color: #e6fbff; }
+.dive-loading-card strong { font-size: clamp(20px, 3vw, 28px); letter-spacing: .01em; }
+.dive-loading-bar { width: min(320px, 70vw); height: 6px; border-radius: 99px; background: rgba(160, 229, 226, .18); overflow: hidden; }
+.dive-loading-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5fe3d6, #9bf0ff); transition: width 300ms ease; }
+@keyframes dive-loading-in { from { opacity: 0; } to { opacity: 1; } }

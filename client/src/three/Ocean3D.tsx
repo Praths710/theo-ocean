@@ -9,7 +9,7 @@ import { MODEL_CONFIG, SPECIES_MODEL, type ModelId } from "./modelConfig";
 // Dive.tsx in "world pixels"; here 1 world unit = 100 px and the camera is placed so the z = 0
 // plane lines up exactly with the screen. Scenery sits at other depths for real parallax.
 
-export type Swimmer3D = { id: string; x: number; y: number; dir: 1 | -1; w: number };
+export type Swimmer3D = { id: string; x: number; y: number; vx: number; vy: number; dir: 1 | -1; w: number };
 type Ref<T> = { current: T };
 
 const FOV = 38;
@@ -188,49 +188,70 @@ transformed.x *= (1.0 - h * 0.55) * (1.0 + sin(h * 26.0 + ph) * 0.45); // taperi
   return <instancedMesh ref={mesh} args={[geo, mat, count]} frustumCulled={false} />;
 }
 
-/** One animal: follows its gameplay swimmer, turns smoothly when it changes direction. */
+/**
+ * One animal, following its gameplay swimmer. Turns are a real U-turn: the body swings through
+ * depth (away from the camera) instead of spinning on the spot, and it pitches with its climb.
+ */
 function Animal({ speciesId, swimmers, onReady }: { speciesId: string; swimmers: Ref<Swimmer3D[]>; onReady: (id: string) => void }) {
   const model = SPECIES_MODEL[speciesId] as ModelId;
   const group = useRef<THREE.Group>(null);
-  const yaw = useRef(0);
-  const last = useRef({ x: 0, y: 0 });
+  const yaw = useRef<number | null>(null);
+  const pitch = useRef(0);
+  const tempo = useRef(1);
   const s = swimmers.current.find((w) => w.id === speciesId);
   const length = (s?.w ?? MODEL_CONFIG[model].length * U) / U;
   useFrame((_, dt) => {
     const w = swimmers.current.find((v) => v.id === speciesId);
     if (!w || !group.current) return;
     const target = w.dir === 1 ? 0 : Math.PI;
-    yaw.current += (target - yaw.current) * (1 - Math.exp(-3 * dt));
-    const vy = (w.y - last.current.y) / Math.max(dt, 1e-3);
-    last.current = { x: w.x, y: w.y };
-    group.current.position.set(w.x / U, -w.y / U, 0);
-    group.current.rotation.set(0, yaw.current, THREE.MathUtils.clamp(-vy / 400, -0.25, 0.25) * (w.dir === 1 ? 1 : -1));
+    if (yaw.current === null) yaw.current = target;
+    yaw.current += (target - yaw.current) * (1 - Math.exp(-2.2 * dt));
+    const speed = Math.hypot(w.vx, w.vy);
+    const p = THREE.MathUtils.clamp(-w.vy / (Math.abs(w.vx) + 80), -0.35, 0.35);
+    pitch.current += (p - pitch.current) * (1 - Math.exp(-3 * dt));
+    tempo.current = THREE.MathUtils.clamp(0.45 + speed / 90, 0.45, 1.8);
+    const turning = Math.sin(yaw.current); // 0 when side-on, ±1 mid-turn
+    group.current.position.set(w.x / U, -w.y / U, -Math.abs(turning) * length * 0.45);
+    group.current.rotation.set(0, yaw.current, pitch.current); // pitch is in the body's own frame, so no flip when facing left
   });
   return (
     <group ref={group}>
-      <ModelActor id={model} length={length} onReady={() => onReady(speciesId)} />
+      <ModelActor id={model} length={length} tempo={tempo} onReady={() => onReady(speciesId)} />
     </group>
   );
 }
 
-function Diver3D({ body, onReady, suit }: { body: Ref<{ x: number; y: number; vx: number; vy: number; facing: 1 | -1 }>; onReady: () => void; suit?: string }) {
+function Diver3D({ body, onReady, suit, length }: { body: Ref<{ x: number; y: number; vx: number; vy: number; facing: 1 | -1 }>; onReady: () => void; suit?: string; length: number }) {
   const group = useRef<THREE.Group>(null);
-  const yaw = useRef(0);
+  const yaw = useRef<number | null>(null);
+  const pitch = useRef(0);
   const tempo = useRef(1);
+  const effort = useRef(0);
+  const t = useRef(0);
   useFrame((_, dt) => {
     const b = body.current;
     if (!group.current) return;
+    t.current += dt;
     const target = b.facing === 1 ? 0 : Math.PI;
-    yaw.current += (target - yaw.current) * (1 - Math.exp(-5 * dt));
+    if (yaw.current === null) yaw.current = target;
+    yaw.current += (target - yaw.current) * (1 - Math.exp(-4 * dt));
     const speed = Math.hypot(b.vx, b.vy);
-    tempo.current = 0.35 + Math.min(1.4, speed / 200);
-    const pitch = THREE.MathUtils.clamp(-b.vy / 340, -0.45, 0.45);
-    group.current.position.set(b.x / U, -b.y / U, 0.2);
-    group.current.rotation.set(0, yaw.current, pitch * (b.facing === 1 ? 1 : -1));
+    const e = Math.min(1, speed / 260);
+    effort.current += (e - effort.current) * (1 - Math.exp(-3 * dt));
+    tempo.current = 0.45 + effort.current * 1.1;
+    // Head leads the climb/dive; level out when drifting.
+    const p = THREE.MathUtils.clamp(-b.vy / (Math.abs(b.vx) + 160), -0.5, 0.5);
+    pitch.current += (p - pitch.current) * (1 - Math.exp(-4 * dt));
+    const turning = Math.sin(yaw.current);
+    const bob = Math.sin(t.current * 1.3) * 0.03 * (1 - effort.current); // floating at rest
+    group.current.position.set(b.x / U, -b.y / U + bob, 0.2 - Math.abs(turning) * 0.6);
+    // YXZ: turn first, then roll/pitch about the diver's own body axes (so leaning into a turn
+    // never tips the head up or down).
+    group.current.rotation.set(turning * 0.25, yaw.current, pitch.current + Math.sin(t.current * 0.9) * 0.03, "YXZ");
   });
   return (
     <group ref={group}>
-      <ModelActor id="diver" length={2.3} tempo={tempo} onReady={onReady} suit={suit} />
+      <ModelActor id="diver" length={length} tempo={tempo} effort={effort} onReady={onReady} suit={suit} />
     </group>
   );
 }
@@ -269,7 +290,7 @@ export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmer
       {speciesIds.filter((id) => SPECIES_MODEL[id]).map((id) => (
         <Suspense key={id} fallback={null}><Animal speciesId={id} swimmers={swimmers} onReady={onModelReady} /></Suspense>
       ))}
-      <Suspense fallback={null}><Diver3D body={body} onReady={() => onModelReady("diver")} suit={suit} /></Suspense>
+      <Suspense fallback={null}><Diver3D body={body} onReady={() => onModelReady("diver")} suit={suit} length={Math.min(2.3, (view.w * 0.42) / U)} /></Suspense>
     </Canvas>
   );
 }

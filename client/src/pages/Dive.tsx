@@ -6,6 +6,9 @@ import { zones, type Species } from "@shared/ocean";
 import OceanBackdrop, { type DiverProbe, type OceanHandle } from "@/components/ocean/OceanBackdrop";
 import { SeascapeStrip } from "@/components/ocean/Seascape";
 import Ocean3D from "@/three/Ocean3D";
+import { useProgress } from "@react-three/drei";
+import { SPECIES_MODEL } from "@/three/modelConfig";
+import { suitColor } from "@/lib/suit";
 import Diver from "@/components/art/Diver";
 import Creature, { type Art } from "@/components/art/Creature";
 import { speciesArt } from "@/components/art/speciesArt";
@@ -30,7 +33,9 @@ const SCHOOLS: { art: Art; size: number; count: number }[][] = [
   [],
 ];
 
-type Swimmer = { id: string; x: number; y: number; baseX: number; baseY: number; dir: 1 | -1; phase: number; w: number };
+// vx/vy: actual velocity (px/s). goal: the way it wants to swim; it steers there gradually and
+// cool (seconds) blocks another change of mind, so animals never flicker back and forth.
+type Swimmer = { id: string; x: number; y: number; vx: number; vy: number; baseX: number; baseY: number; dir: 1 | -1; goal: 1 | -1; cool: number; phase: number; w: number };
 type School = { x: number; y: number; dir: 1 | -1; speed: number; phase: number; members: { dx: number; dy: number; ph: number }[]; scatter: number };
 
 export default function Dive() {
@@ -73,6 +78,15 @@ export default function Dive() {
   const [models3d, setModels3d] = useState<Record<string, boolean>>({});
   const onModelReady = useCallback((id: string) => setModels3d((m) => (m[id] ? m : { ...m, [id]: true })), []);
   const webgl2 = useMemo(() => { try { return !!document.createElement("canvas").getContext("webgl2"); } catch { return false; } }, []);
+  // While the 3D models download, show a loading screen rather than flat art that later pops into 3D.
+  // If something is still missing after 20s, carry on with the illustration for that one.
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+  const loadProgress = useProgress((p) => p.progress);
+  useEffect(() => {
+    setLoadTimedOut(false);
+    const t = setTimeout(() => setLoadTimedOut(true), 20_000);
+    return () => clearTimeout(t);
+  }, [zone.id]);
   const [transition, setTransition] = useState<"down" | "up" | null>(null);
   const [muted, setMuted] = useState(oceanAudio.isMuted());
   const [line, setLine] = useState({ text: "", mood: "curious", speaking: false, listening: false, thinking: false });
@@ -136,7 +150,8 @@ export default function Dive() {
       const a = speciesArt[s.id];
       const x = WW * ((i + 0.6) / (n + 0.4)) + (Math.random() - 0.5) * W * 0.3;
       const y = H * (a.band[0] + Math.random() * (a.band[1] - a.band[0]));
-      return { id: s.id, x, y, baseX: x, baseY: y, dir: Math.random() < 0.5 ? 1 : -1, phase: Math.random() * 10, w: Math.min(a.width, W * 0.4) };
+      const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
+      return { id: s.id, x, y, vx: 0, vy: 0, baseX: x, baseY: y, dir, goal: dir, cool: 0, phase: Math.random() * 10, w: Math.min(a.width, W * 0.4) };
     });
     schools.current = SCHOOLS[zoneIndex].map((sc, i) => ({
       x: WW * (0.25 + i * 0.4), y: H * (0.3 + i * 0.25), dir: i % 2 ? -1 : 1, speed: 45 + i * 15, phase: Math.random() * 10, scatter: 0,
@@ -253,7 +268,7 @@ export default function Dive() {
       const drag = Math.exp(-2.4 * dt); b.vx *= drag; b.vy *= drag;
       const sp = Math.hypot(b.vx, b.vy); if (sp > 340) { b.vx *= 340 / sp; b.vy *= 340 / sp; }
       b.x += b.vx * dt; b.y += b.vy * dt + Math.sin(t * 1.1) * 7 * dt; // gentle buoyancy bob
-      b.x = Math.max(DIVER_W * 0.4, Math.min(WW - DIVER_W * 0.4, b.x));
+      b.x = Math.max(DIVER_W * 0.72, Math.min(WW - DIVER_W * 0.72, b.x)); // keep the whole 3D diver (fins included) on screen
       b.y = Math.max(70, Math.min(H - 60, b.y));
       if (Math.abs(b.vx) > 25) b.facing = b.vx > 0 ? 1 : -1;
 
@@ -281,39 +296,51 @@ export default function Dive() {
         const a = speciesArt[s.id];
         if (!a) continue;
         const toDiver = Math.hypot(s.x - b.x, s.y - b.y);
+        // Each behaviour picks a target velocity; the animal eases towards it (no instant reversals).
+        s.cool = Math.max(0, s.cool - dt);
+        const turn = (to: 1 | -1) => { if (s.goal !== to && s.cool <= 0) { s.goal = to; s.cool = 2.2; } };
+        let tvx = 0, tvy = 0, ease = 1.2;
         switch (a.behavior) {
           case "cruise":
-            s.x += s.dir * a.speed * dt;
-            s.y = s.baseY + Math.sin(t * 0.45 + s.phase) * 18;
-            if (s.x > s.baseX + W * 0.9) s.dir = -1;
-            if (s.x < s.baseX - W * 0.9) s.dir = 1;
-            s.x = Math.max(s.w * 0.5, Math.min(WW - s.w * 0.5, s.x));
-            if (s.x <= s.w * 0.5) s.dir = 1; if (s.x >= WW - s.w * 0.5) s.dir = -1;
+            if (s.x > s.baseX + W * 0.9 || s.x > WW - s.w) turn(-1);
+            if (s.x < s.baseX - W * 0.9 || s.x < s.w) turn(1);
+            tvx = s.goal * a.speed;
+            tvy = (s.baseY + Math.sin(t * 0.45 + s.phase) * 18 - s.y) * 1.2;
             break;
           case "dart": {
-            const burst = 0.35 + Math.max(0, Math.sin(t * 1.4 + s.phase)) * 1.8;
-            if (toDiver < 130) s.dir = s.x > b.x ? 1 : -1; // skittish: flee the diver
-            s.x += s.dir * a.speed * burst * dt;
-            s.y += Math.sin(t * 0.9 + s.phase) * 22 * dt;
-            s.y = Math.max(H * a.band[0], Math.min(H * a.band[1], s.y));
-            if (s.x > s.baseX + W * 0.6) s.dir = -1; if (s.x < s.baseX - W * 0.6) s.dir = 1;
+            if (toDiver < 150) turn(s.x > b.x ? 1 : -1); // skittish: flee the diver
+            if (s.x > s.baseX + W * 0.6 || s.x > WW - s.w) turn(-1);
+            if (s.x < s.baseX - W * 0.6 || s.x < s.w) turn(1);
+            const burst = 0.45 + Math.max(0, Math.sin(t * 1.4 + s.phase)) * 1.6;
+            tvx = s.goal * a.speed * burst;
+            tvy = Math.sin(t * 0.9 + s.phase) * 22;
+            if (s.y < H * a.band[0]) tvy = 30; else if (s.y > H * a.band[1]) tvy = -30;
+            ease = 2;
             break;
           }
           case "hover":
-            s.x = s.baseX + Math.sin(t * 0.18 + s.phase) * 60;
-            s.y = s.baseY + Math.sin(t * 0.55 + s.phase) * 16;
-            s.dir = b.x > s.x ? 1 : -1; // curious: faces the diver
+            tvx = (s.baseX + Math.sin(t * 0.18 + s.phase) * 60 - s.x) * 0.8;
+            tvy = (s.baseY + Math.sin(t * 0.55 + s.phase) * 16 - s.y) * 0.8;
+            if (Math.abs(b.x - s.x) > 60) turn(b.x > s.x ? 1 : -1); // curious: turns to face the diver
             break;
           case "drift":
-            s.x = s.baseX + Math.sin(t * 0.08 + s.phase) * 140;
-            s.y = s.baseY + Math.sin(t * 0.25 + s.phase) * 24;
-            s.dir = Math.cos(t * 0.08 + s.phase) > 0 ? 1 : -1;
+            tvx = (s.baseX + Math.sin(t * 0.08 + s.phase) * 140 - s.x) * 0.6;
+            tvy = (s.baseY + Math.sin(t * 0.25 + s.phase) * 24 - s.y) * 0.6;
             break;
           case "floor":
-            s.x = s.baseX + (a.speed ? Math.sin(t * 0.05 + s.phase) * 60 : 0);
-            s.y = H * a.band[0];
+            tvx = a.speed ? (s.baseX + Math.sin(t * 0.05 + s.phase) * 60 - s.x) * 0.5 : 0;
+            tvy = (H * a.band[0] - s.y) * 2;
             break;
         }
+        const k = 1 - Math.exp(-ease * dt);
+        s.vx += (tvx - s.vx) * k;
+        s.vy += (tvy - s.vy) * k;
+        s.x = Math.max(s.w * 0.5, Math.min(WW - s.w * 0.5, s.x + s.vx * dt));
+        s.y += s.vy * dt;
+        // Facing follows real motion (with a dead zone), or the chosen heading while hovering.
+        if (a.behavior === "hover") s.dir = s.goal;
+        else if (s.vx > 6) s.dir = 1;
+        else if (s.vx < -6) s.dir = -1;
         const el = swimmerEls.current.get(s.id);
         if (el) {
           const onScreen = s.x + s.w > cam.x - 200 && s.x - s.w < cam.x + W + 200;
@@ -370,6 +397,10 @@ export default function Dive() {
   // Unlock progress: scanning is 70% of the way, passing the checkpoint is the rest.
   const unlockPct = !nextZone || passedHere ? 100 : Math.round((foundHere / zone.species.length) * 70);
 
+  const want3d = (id: string) => webgl2 && (id === "diver" || Boolean(SPECIES_MODEL[id]));
+  const hide2d = (id: string) => want3d(id) && (models3d[id] || !loadTimedOut);
+  const loading3d = webgl2 && !loadTimedOut && !["diver", ...zone.species.map((sp) => sp.id)].filter(want3d).every((id) => models3d[id]);
+
   return (
     <main className={`dive zone-${zoneIndex} ${transition ? `transition-${transition}` : ""}`}>
       <div
@@ -383,7 +414,7 @@ export default function Dive() {
         <OceanBackdrop ref={ocean} zoneIndex={zoneIndex} diver={probe} camera={camera} />
         {webgl2 ? (
           <Ocean3D key={`${zone.id}-${view.w}x${view.h}`} zoneIndex={zoneIndex} view={view} worldW={worldW} camera={camera} body={body} swimmers={swimmers}
-            speciesIds={zone.species.map((s) => s.id)} onModelReady={onModelReady} suit={`hsl(${(178 + state.diver.suitHue) % 360}, 60%, 42%)`} />
+            speciesIds={zone.species.map((s) => s.id)} onModelReady={onModelReady} suit={suitColor(state.diver.suitHue)} />
         ) : (
           <div ref={farEl} className="parallax-far">
             <SeascapeStrip zoneIndex={zoneIndex} layer="far" tiles={Math.ceil(WORLD_SCREENS * FAR_PARALLAX) + 2} tileWidth={view.w} />
@@ -410,7 +441,7 @@ export default function Dive() {
               <div
                 key={s.id}
                 ref={(el) => { if (el) swimmerEls.current.set(s.id, el); else swimmerEls.current.delete(s.id); }}
-                className={`swimmer ${near === s.id ? "near" : ""} ${scanning === s.id ? "scanning" : ""} ${found ? "found" : ""} ${models3d[s.id] ? "has3d" : ""} behavior-${a.behavior}`}
+                className={`swimmer ${near === s.id ? "near" : ""} ${scanning === s.id ? "scanning" : ""} ${found ? "found" : ""} ${hide2d(s.id) ? "has3d" : ""} behavior-${a.behavior}`}
                 style={{ width: Math.min(a.width, view.w * 0.4) }}
                 onPointerDown={(e) => { e.stopPropagation(); oceanAudio.sfx("click"); if (near === s.id) void scan(s.id); else follow.current = s.id; }}
                 role="button"
@@ -422,7 +453,7 @@ export default function Dive() {
             );
           })}
 
-          <div ref={diverEl} className={`player-diver ${models3d.diver ? "has3d" : ""}`} style={{ width: DIVER_W, height: DIVER_H }}>
+          <div ref={diverEl} className={`player-diver ${hide2d("diver") ? "has3d" : ""}`} style={{ width: DIVER_W, height: DIVER_H }}>
             <Diver suitHue={state.diver.suitHue} />
           </div>
         </div>
@@ -505,6 +536,15 @@ export default function Dive() {
       {card && <SpeciesCard species={card} buddy={state.diver.companionName} onClose={() => setCardId(null)}
         onAsk={() => { setCardId(null); companion.current?.ask(`Tell me more about the ${card.name}! How does it survive down here?`); }}
         onQuiz={() => { setCardId(null); companion.current?.quiz(card.id); }} />}
+      {loading3d && (
+        <div className="dive-loading" role="status" aria-live="polite">
+          <div className="dive-loading-card">
+            <span className="eyebrow small">{zone.depthLabel}</span>
+            <strong>Diving into the {zone.name}…</strong>
+            <div className="dive-loading-bar"><span style={{ width: `${Math.max(8, Math.round(loadProgress))}%` }} /></div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

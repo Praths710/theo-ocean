@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { zones } from "@shared/ocean";
 import OceanBackdrop from "@/components/ocean/OceanBackdrop";
 import Seascape from "@/components/ocean/Seascape";
-import Diver from "@/components/art/Diver";
+import DiverStage from "@/three/DiverStage";
+import { suitColor } from "@/lib/suit";
 import Creature from "@/components/art/Creature";
 import { speciesArt } from "@/components/art/speciesArt";
 import { MOOD_COLORS } from "@/components/Companion";
@@ -82,7 +83,7 @@ export default function Dashboard() {
       {/* ---------- top HUD ---------- */}
       <header className="base-top">
         <div className="player-badge">
-          <div className="player-portrait"><Diver suitHue={state.diver.suitHue} kick={1.4} /></div>
+          <div className="player-portrait" style={{ ["--suit" as string]: suitColor(state.diver.suitHue) }}>{state.diver.name.slice(0, 1).toUpperCase()}</div>
           <div className="player-info">
             <strong>{state.diver.name}</strong>
             <div className="lvl-row"><span className="lvl">LV {level}</span><div className="lvl-bar"><span style={{ width: `${levelPct}%` }} /></div></div>
@@ -133,7 +134,7 @@ export default function Dashboard() {
           <h1 className="stage-title">{zone.name}</h1>
           <div className="stage-diver">
             <div className="spotlight" />
-            <div className="stage-diver-float"><Diver suitHue={state.diver.suitHue} kick={1.1} /></div>
+            <DiverStage className="stage-diver-3d" suit={suitColor(state.diver.suitHue)} />
             {[0, 1, 2, 3, 4].map((i) => <i key={i} className="stage-bubble" style={{ left: `${58 + i * 3}%`, animationDelay: `${i * 0.7}s` }} />)}
           </div>
           <div className="buddy-bubble" style={{ ["--mood" as string]: MOOD_COLORS.curious }}>
@@ -224,7 +225,7 @@ function Locker({ onClose }: { onClose: () => void }) {
     <div className="profile-backdrop" role="presentation" onClick={onClose}>
       <article className="locker-modal" role="dialog" aria-modal="true" aria-labelledby="locker-title" onClick={(e) => e.stopPropagation()}>
         <button className="profile-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        <div className="locker-stage"><div className="spotlight" /><div className="stage-diver-float"><Diver suitHue={suitHue} kick={1.2} /></div></div>
+        <div className="locker-stage"><div className="spotlight" /><DiverStage className="stage-diver-3d" suit={suitColor(suitHue)} length={2.25} /></div>
         <div className="locker-form">
           <h2 id="locker-title">Diver locker</h2>
           <label className="field"><span>DIVER NAME</span><input value={diverName} maxLength={24} onChange={(e) => setDiverName(e.target.value)} /></label>
@@ -233,7 +234,7 @@ function Locker({ onClose }: { onClose: () => void }) {
             <div className="suit-grid">
               {SUITS.map((s) => (
                 <button key={s.hue} className={`suit ${suitHue === s.hue ? "active" : ""}`} onClick={() => setSuitHue(s.hue)} aria-pressed={suitHue === s.hue}>
-                  <i style={{ background: `hsl(${(178 + s.hue) % 360} 55% 42%)` }} />{s.label}
+                  <i style={{ background: suitColor(s.hue) }} />{s.label}
                 </button>
               ))}
             </div>

@@ -16,7 +16,7 @@ export function preloadModel(id: ModelId) {
   if (cfg) useGLTF.preload(cfg.file, false, MESHOPT);
 }
 
-type SwimUniforms = { uTime: { value: number }; uAmp: { value: number }; uFreq: { value: number }; uSpeed: { value: number }; uLen: { value: number }; uMode: { value: number }; uInvWorld: { value: THREE.Matrix4 }; uWorld: { value: THREE.Matrix4 } };
+type SwimUniforms = { uTime: { value: number }; uAmp: { value: number }; uFreq: { value: number }; uSpeed: { value: number }; uLen: { value: number }; uMode: { value: number }; uEffort: { value: number }; uInvWorld: { value: THREE.Matrix4 }; uWorld: { value: THREE.Matrix4 } };
 
 /** Adds a travelling-wave bend (fish) or leg kick (diver) to a material, in actor space. */
 function addSwim(material: THREE.Material, u: SwimUniforms, suit?: SuitUniforms) {
@@ -30,11 +30,20 @@ function addSwim(material: THREE.Material, u: SwimUniforms, suit?: SuitUniforms)
     }
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>
-uniform float uTime; uniform float uAmp; uniform float uFreq; uniform float uSpeed; uniform float uLen; uniform float uMode;
-uniform mat4 uInvWorld; uniform mat4 uWorld;`)
+uniform float uTime; uniform float uAmp; uniform float uFreq; uniform float uSpeed; uniform float uLen; uniform float uMode; uniform float uEffort;
+uniform mat4 uInvWorld; uniform mat4 uWorld;
+${KICK_RIG}`)
+      .replace("#include <beginnormal_vertex>", `#include <beginnormal_vertex>
+if (uMode > 0.5) {
+  // Bend normals with the joints (finite difference through the same rig) so lighting stays right.
+  mat4 toActor = uInvWorld * modelMatrix;
+  vec3 a0 = (toActor * vec4(position, 1.0)).xyz;
+  vec3 e = normalize(mat3(toActor) * objectNormal) * 0.004 * uLen;
+  objectNormal = normalize(inverse(mat3(toActor)) * (rigKick(a0 + e) - rigKick(a0)));
+}`)
       .replace("#include <begin_vertex>", `#include <begin_vertex>
 {
-  // Work in actor space (x = head->tail axis, normalised by body length).
+  // Work in actor space (x = tail->head axis, normalised by body length).
   vec4 a = uInvWorld * modelMatrix * vec4(transformed, 1.0);
   float s = a.x / uLen; // -0.5 tail .. +0.5 head
   vec3 d = vec3(0.0);
@@ -42,17 +51,7 @@ uniform mat4 uInvWorld; uniform mat4 uWorld;`)
     float w = smoothstep(0.35, -0.5, s);                  // head stiff, tail loose
     d.z = sin(s * uFreq - uTime * uSpeed) * uAmp * uLen * w;
   } else {
-    float legs = smoothstep(-0.05, -0.35, s);             // only behind the hips
-    float side = sign(a.z + 1e-4);                        // left/right leg alternate
-    d.y = sin(uTime * uSpeed + side * 1.5708) * uAmp * uLen * legs * (0.4 + (-s) * 1.6);
-    // T-pose arms -> swept back along the body: anything wider than the shoulders folds backwards.
-    float shoulder = 0.1 * uLen;
-    float spread = abs(a.z) - shoulder;
-    if (spread > 0.0 && s > 0.1) {
-      d.z += -side * spread * 0.92;
-      d.x += -spread * 0.95;
-      d.y += -spread * 0.12;
-    }
+    d = rigKick(a.xyz) - a.xyz;
   }
   vec4 back = inverse(modelMatrix) * (uWorld * vec4(d, 0.0)); // actor space -> mesh space
   transformed += back.xyz;
@@ -61,6 +60,36 @@ uniform mat4 uInvWorld; uniform mat4 uWorld;`)
   if (suit) material.customProgramCacheKey = () => "suit"; // same callback source as other parts: keep programs apart
   material.needsUpdate = true;
 }
+
+// A small joint chain for the (unrigged, T-posed) diver, in actor space where x runs tail->head
+// and s = x / length. Joint positions were measured with scripts/diver-profile.mjs.
+// Distal joints are applied first, all around their rest positions (forward kinematics).
+const KICK_RIG = `
+vec2 rot2(vec2 p, vec2 c, float ang) { p -= c; float cs = cos(ang), sn = sin(ang); return c + vec2(cs * p.x - sn * p.y, sn * p.x + cs * p.y); }
+vec3 rigKick(vec3 a) {
+  float L = uLen;
+  float s = a.x / L;
+  float side = a.z >= 0.0 ? 1.0 : -1.0;
+  float ph = uTime * uSpeed + side * 3.14159;             // legs kick in opposition
+  float amp = 0.3 + 0.7 * uEffort;                        // lazy sculling at rest, full kicks when swimming hard
+  float leg = smoothstep(0.004, 0.03, abs(a.z) / L);      // keep the crotch seam together
+  vec3 p = a;
+  // Ankles: point the feet so fins trail behind (the model stands flat-footed), fins flex with the stroke.
+  float wa = smoothstep(-0.43, -0.46, s);
+  p.xy = rot2(p.xy, vec2(-0.445, 0.04) * L, wa * (-1.25 + leg * amp * 0.45 * sin(ph - 2.1)));
+  // Knees: bend on the up-stroke only.
+  float wk = smoothstep(-0.22, -0.3, s);
+  p.xy = rot2(p.xy, vec2(-0.26, 0.05) * L, -wk * leg * amp * (0.1 + 0.42 * (0.5 + 0.5 * sin(ph - 1.1))));
+  // Hips: the kick itself.
+  float wh = smoothstep(-0.03, -0.13, s);
+  p.xy = rot2(p.xy, vec2(-0.08, 0.04) * L, wh * leg * amp * 0.32 * sin(ph));
+  // Arms: T-pose -> relaxed along the body, swinging round the shoulder, with a slight sway.
+  float shoulder = 0.13 * L;
+  float wArm = smoothstep(shoulder, shoulder + 0.05 * L, abs(a.z)) * smoothstep(0.14, 0.22, s);
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulder), wArm * side * (1.62 + 0.05 * sin(uTime * uSpeed * 0.5 + side)));
+  p.y -= wArm * 0.03 * L;
+  return p;
+}`;
 
 type SuitUniforms = { uSuit: { value: THREE.Color }; uSuitOn: { value: number } };
 
@@ -76,8 +105,8 @@ const SUIT_GLSL = `#include <map_fragment>
 }`;
 
 /** `tempo`: animation speed multiplier read every frame (e.g. faster kicks when swimming fast). */
-/** `suit`: optional wetsuit colour (diver only). */
-export default function ModelActor({ id, length, children, onReady, tempo, suit }: { id: ModelId; length?: number; children?: ReactNode; onReady?: () => void; tempo?: { current: number }; suit?: string }) {
+/** `suit`: optional wetsuit colour (diver only). `effort` (0..1): how hard the diver kicks. */
+export default function ModelActor({ id, length, children, onReady, tempo, suit, effort }: { id: ModelId; length?: number; children?: ReactNode; onReady?: () => void; tempo?: { current: number }; suit?: string; effort?: { current: number } }) {
   const cfg = MODEL_CONFIG[id];
   const { scene, animations } = useGLTF(cfg.file, false, MESHOPT);
   const root = useRef<THREE.Group>(null);
@@ -90,7 +119,7 @@ export default function ModelActor({ id, length, children, onReady, tempo, suit 
 
   const uniforms = useMemo<SwimUniforms>(() => ({
     uTime: { value: 0 }, uAmp: { value: cfg.swim?.amp ?? 0 }, uFreq: { value: cfg.swim?.freq ?? 6 }, uSpeed: { value: cfg.swim?.speed ?? 4 },
-    uLen: { value: target }, uMode: { value: cfg.swim?.mode === "kick" ? 1 : 0 }, uInvWorld: { value: new THREE.Matrix4() }, uWorld: { value: new THREE.Matrix4() },
+    uLen: { value: target }, uMode: { value: cfg.swim?.mode === "kick" ? 1 : 0 }, uEffort: { value: 1 }, uInvWorld: { value: new THREE.Matrix4() }, uWorld: { value: new THREE.Matrix4() },
   }), [cfg, target]);
 
   const suitU = useMemo<SuitUniforms>(() => ({ uSuit: { value: new THREE.Color() }, uSuitOn: { value: 0 } }), []);
@@ -146,6 +175,7 @@ export default function ModelActor({ id, length, children, onReady, tempo, suit 
   useFrame((_, delta) => {
     const k = tempo?.current ?? 1;
     uniforms.uTime.value += delta * k;
+    if (effort) uniforms.uEffort.value = effort.current;
     if (tempo) for (const a of Object.values(actions)) a?.setEffectiveTimeScale((cfg.clipSpeed ?? 1) * k);
     if (actor.current) {
       actor.current.updateMatrixWorld();
