@@ -6,6 +6,7 @@ import { CHECKPOINT_QUESTIONS, diverLook, zones, type Species } from "@shared/oc
 import OceanBackdrop, { type DiverProbe, type OceanHandle } from "@/components/ocean/OceanBackdrop";
 import { SeascapeStrip } from "@/components/ocean/Seascape";
 import Ocean3D from "@/three/Ocean3D";
+import SpeciesViewer from "@/three/SpeciesViewer";
 import { useProgress } from "@react-three/drei";
 import { SPECIES_MODEL } from "@/three/modelConfig";
 import Diver from "@/components/art/Diver";
@@ -271,7 +272,7 @@ export default function Dive() {
       const sp = Math.hypot(b.vx, b.vy); if (sp > 340) { b.vx *= 340 / sp; b.vy *= 340 / sp; }
       b.x += b.vx * dt; b.y += b.vy * dt + Math.sin(t * 1.1) * 7 * dt; // gentle buoyancy bob
       b.x = Math.max(DIVER_W * 0.72, Math.min(WW - DIVER_W * 0.72, b.x)); // keep the whole 3D diver (fins included) on screen
-      b.y = Math.max(70, Math.min(H - 60, b.y));
+      b.y = Math.max(125, Math.min(H - 60, b.y)); // stay below the top bar
       if (Math.abs(b.vx) > 25) b.facing = b.vx > 0 ? 1 : -1;
 
       // --- camera follows, looking a little ahead ---
@@ -413,6 +414,16 @@ export default function Dive() {
   const nextUnlocked = nextZone && zoneIndex + 1 <= maxZone;
   // Unlock progress: scanning is 70% of the way, passing the checkpoint is the rest.
   const unlockPct = !nextZone || passedHere ? 100 : Math.round((Math.min(foundHere, cpNeeded) / cpNeeded) * 70);
+  // The big next-level banner pops up for a few seconds when it becomes available (or when the diver
+  // reaches the bottom), then gets out of the way. The XP chip and Space always open it.
+  const promptKey = !nextZone ? "none" : nextUnlocked ? "deeper" : cpReady ? "checkpoint" : "locked";
+  const [promptShown, setPromptShown] = useState(false);
+  useEffect(() => {
+    if (promptKey !== "deeper" && promptKey !== "checkpoint") return;
+    setPromptShown(true);
+    const t = setTimeout(() => setPromptShown(false), 6000);
+    return () => clearTimeout(t);
+  }, [promptKey, zone.id]);
 
   const want3d = (id: string) => webgl2 && (id === "diver" || Boolean(SPECIES_MODEL[id]));
   const hide2d = (id: string) => want3d(id) && (models3d[id] || !loadTimedOut);
@@ -493,7 +504,8 @@ export default function Dive() {
           </div>
         </div>
         <div className="hud-depth"><span className="hud-kicker">DEPTH</span><span ref={depthEl} className="hud-depth-num">0 m</span></div>
-        <div className="hud-xp">
+        <div className={`hud-xp ${nextZone && (nextUnlocked || cpReady) ? "actionable" : ""}`} role={nextZone && (nextUnlocked || cpReady) ? "button" : undefined} tabIndex={nextZone && (nextUnlocked || cpReady) ? 0 : undefined}
+          onClick={() => { if (nextUnlocked) void changeZone(zoneIndex + 1); else if (nextZone && cpReady) setCheckpointOpen(true); }}>
           <div className="hud-xp-row">
             <span className="hud-kicker">{!nextZone ? "DEEPEST ZONE" : passedHere ? `${nextZone.name.toUpperCase()} UNLOCKED` : cpReady ? "CHECKPOINT READY · 3 QUESTIONS" : `SCAN ${cpNeeded - foundHere} MORE TO UNLOCK THE CHECKPOINT`}</span>
             <b>{xp} XP</b>
@@ -511,8 +523,7 @@ export default function Dive() {
         ))}
       </ol>
 
-      {/* Next-level prompt: always on screen once it's actionable, no need to swim to the bottom. */}
-      {nextZone && !cardId && !checkpointOpen && (nextUnlocked || cpReady || edge === "bottom") && (
+      {nextZone && !cardId && !checkpointOpen && (promptShown || edge === "bottom") && (
         nextUnlocked ? (
           <button className="edge-prompt bottom" onClick={() => changeZone(zoneIndex + 1)}><ArrowDown size={16} /> Dive deeper into the {nextZone.name} <kbd>Space</kbd></button>
         ) : cpReady ? (
@@ -573,7 +584,7 @@ function SpeciesCard({ species, buddy, onClose, onAsk, onQuiz }: { species: Spec
     <div className="profile-backdrop" role="presentation" onClick={onClose}>
       <article className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="sp-title" onClick={(e) => e.stopPropagation()}>
         <button className="profile-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        <div className={`profile-art ${species.tone}`}><div className="profile-creature"><Creature art={a.art} /></div><span className="art-grid" /></div>
+        <div className={`profile-art ${species.tone}`}><SpeciesViewer speciesId={species.id} className="profile-3d" fallback={<div className="profile-creature"><Creature art={a.art} /></div>} /><span className="art-grid" /></div>
         <div className="profile-copy">
           <div className="eyebrow"><span className="eyebrow-line" />SCAN COMPLETE · QUIZ MATERIAL</div>
           <h2 id="sp-title">{species.name}</h2>

@@ -85,28 +85,28 @@ vec3 rigKick(vec3 a) {
   // Hips: the kick itself.
   float wh = smoothstep(-0.03, -0.13, s);
   p.xy = rot2(p.xy, vec2(-0.08, 0.04) * L, wh * leg * amp * 0.32 * sin(ph));
-  // Upper body. Divers keep their arms close, but they are never frozen: the chest rises and rolls
-  // with each kick, the head looks about, and the arms sweep in a slow stroke that grows with speed.
-  float kick2 = uTime * uSpeed * 2.0;                     // two leg beats per cycle -> torso rhythm
+  // Upper body: the model stands in a T-pose, so lying prone it would stare at the seabed with
+  // its arms stuck out. Real divers hold their head up to look ahead and tuck their arms, elbows
+  // bent, hands together under the chest. Everything here moves slowly (breathing, gentle sculling).
+  float slow = uTime * uSpeed * 0.5;                      // one arm/torso cycle per two kicks
+  float breathe = sin(uTime * 1.3);
+  // Arms: forearm folds forward and in (elbow), the arm drops under the body and sweeps back (shoulder).
+  float shoulderZ = 0.13 * L;
+  float armSel = smoothstep(0.14, 0.22, s) * (1.0 - smoothstep(0.38, 0.42, s));
+  float wArm = smoothstep(shoulderZ, shoulderZ + 0.04 * L, abs(a.z)) * armSel;
+  float wFore = smoothstep(0.29 * L, 0.33 * L, abs(a.z)) * armSel;
+  float scull = sin(slow + side * 0.4);
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.31 * L), -side * wFore * (1.75 + 0.12 * scull * (0.4 + uEffort)));
+  p.yz = rot2(p.yz, vec2(0.06 * L, side * shoulderZ), side * wArm * (1.05 + 0.05 * breathe));
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), side * wArm * (0.85 + 0.1 * scull * (0.3 + uEffort)));
+  // Head: tilted back so the diver looks forward, with a slow look around.
+  float head = smoothstep(0.33, 0.37, s) * (1.0 - smoothstep(0.11, 0.15, a.y / L)) * (1.0 - wArm);
+  p.xy = rot2(p.xy, vec2(0.345, 0.05) * L, head * (0.62 + 0.05 * sin(uTime * 0.6)));
+  p.xz = rot2(p.xz, vec2(0.345, 0.0) * L, head * 0.14 * sin(uTime * 0.37) * (1.0 - uEffort * 0.6));
+  // Chest: rises with the breath and rolls a little with the kicks (applied last: it carries head and arms).
   float upper = smoothstep(-0.02, 0.12, s);
-  // Head: nod with the stroke and glance side to side now and then.
-  float head = smoothstep(0.34, 0.4, s);
-  p.xy = rot2(p.xy, vec2(0.37, 0.06) * L, head * (0.05 * sin(kick2 + 0.6) * amp + 0.06 * sin(uTime * 0.7)));
-  p.xz = rot2(p.xz, vec2(0.37, 0.0) * L, head * 0.18 * sin(uTime * 0.45) * (1.0 - uEffort * 0.7));
-  // Arms (T-pose in the file): an elbow, then the shoulder swing that tucks them along the body.
-  float armPh = uTime * uSpeed * 0.5 + side * 0.3;
-  float stroke = 0.5 + 0.5 * sin(armPh);
-  float shoulder = 0.13 * L;
-  float armSel = smoothstep(0.14, 0.22, s);
-  float wElbow = smoothstep(0.3 * L, 0.34 * L, abs(a.z)) * armSel;
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.32 * L), wElbow * side * (0.25 + (0.15 + 0.55 * uEffort) * stroke));
-  float wArm = smoothstep(shoulder, shoulder + 0.05 * L, abs(a.z)) * armSel;
-  float swing = 1.62 - (0.08 + 0.55 * uEffort) * stroke;  // sweep out from the hips and pull back
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulder), wArm * side * swing);
-  p.y -= wArm * (0.03 + 0.05 * uEffort * stroke) * L * smoothstep(0.0, 0.3 * L, abs(a.z) - shoulder);
-  // Chest lift + roll around the body axis, pivoting at the pelvis (last: it carries head and arms).
-  p.xy = rot2(p.xy, vec2(-0.04, 0.04) * L, upper * amp * 0.035 * sin(kick2));
-  p.yz = rot2(p.yz, vec2(0.04, 0.0) * L, upper * amp * 0.06 * sin(uTime * uSpeed));
+  p.xy = rot2(p.xy, vec2(-0.04, 0.04) * L, upper * (0.015 * breathe + amp * 0.012 * sin(slow * 2.0)));
+  p.yz = rot2(p.yz, vec2(0.04, 0.0) * L, upper * amp * 0.035 * sin(uTime * uSpeed));
   return p;
 }`;
 

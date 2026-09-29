@@ -7,6 +7,7 @@ import { DIVER_PRESETS, GEAR_SWATCHES, diverLook, zones, type DiverLook } from "
 import OceanBackdrop from "@/components/ocean/OceanBackdrop";
 import Seascape from "@/components/ocean/Seascape";
 import DiverStage from "@/three/DiverStage";
+import ModelThumb from "@/three/ModelThumb";
 import Creature from "@/components/art/Creature";
 import { speciesArt } from "@/components/art/speciesArt";
 import { MOOD_COLORS } from "@/components/Companion";
@@ -108,7 +109,7 @@ export default function Dashboard() {
               return (
                 <li key={z.id} className={`level-node ${locked ? "locked" : ""} ${i === zoneIdx ? "current" : ""}`} style={{ ["--i" as string]: i }}>
                   <button disabled={locked} onClick={() => dive(i)} className="node-orb" style={{ ["--zc" as string]: ["#3fb6d6", "#2a6f9e", "#3a3f8f", "#4a2f6b", "#5a1f3a"][i] }} aria-label={locked ? `${z.name}, locked until you pass the ${zones[i - 1].name} checkpoint` : `Dive into ${z.name}`}>
-                    {locked ? <Lock size={18} /> : <span className="node-creature"><Creature art={speciesArt[ZONE_ICON[i]].art} /></span>}
+                    {locked ? <Lock size={18} /> : <span className="node-creature"><ModelThumb speciesId={ZONE_ICON[i]} className="thumb-img" fallback={<Creature art={speciesArt[ZONE_ICON[i]].art} />} /></span>}
                     <span className="node-num">{z.level}</span>
                   </button>
                   <div className="node-text">
@@ -186,7 +187,7 @@ export default function Dashboard() {
             return (
               <article key={s.id} className={`species-card ${rarity.cls} ${got ? "got" : "mystery"}`}>
                 <span className="rarity">{got ? rarity.label : "???"}</span>
-                <div className="sc-art"><Creature art={speciesArt[s.id].art} /></div>
+                <div className="sc-art"><ModelThumb speciesId={s.id} className="thumb-img" alt={got ? s.name : ""} fallback={<Creature art={speciesArt[s.id].art} />} /></div>
                 <strong>{got ? s.name : "Undiscovered"}</strong>
                 <small>{got ? s.status : `Somewhere in the ${s.zone.name}`}</small>
                 {got && <span className="shine" />}

@@ -28,7 +28,7 @@ const P = Math.PI;
 const sf = (uid: string) => `https://sketchfab.com/3d-models/${uid}`;
 
 export const MODEL_CONFIG: Record<ModelId, ModelConfig> = {
-  diver: { file: "/models/diver.glb", rot: [P / 2, 0, -P / 2], length: 2.3, swim: { mode: "kick", amp: 0.05, freq: 0, speed: 7 }, credit: { title: "Scuba Diver", author: "turelljc", url: sf("3cffae9b572d4506b3025e29d6ff068c"), license: "CC Attribution" } },
+  diver: { file: "/models/diver.glb", rot: [P / 2, 0, -P / 2], length: 2.3, swim: { mode: "kick", amp: 0.05, freq: 0, speed: 4.2 }, credit: { title: "Scuba Diver", author: "turelljc", url: sf("3cffae9b572d4506b3025e29d6ff068c"), license: "CC Attribution" } },
   vaquita: { file: "/models/vaquita.glb", rot: [0, P / 2, 0], length: 2.0, clip: /^swim$/i, wet: true, credit: { title: "Vaquita (Phocoena sinus)", author: "Major", url: sf("01c460470303460587b8a5310db2e5ee"), license: "CC Attribution" } },
   hawksbill: { file: "/models/hawksbill.glb", rot: [0, P / 2, 0], length: 1.9, credit: { title: "Hawksbill Turtle", author: "Bindestrek", url: sf("bd6c9327fd52469782f055a182659bd2"), license: "CC Attribution" } },
   "green-turtle": { file: "/models/green-turtle.glb", rot: [0, -P / 2, 0], length: 1.8, credit: { title: "Sea Turtle", author: "Eloi", url: sf("23dcb315dea44f5082b020b04710bd31"), license: "CC Attribution" } },

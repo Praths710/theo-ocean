@@ -3,6 +3,8 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Clone, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import ModelActor, { type GearLook } from "./ModelActor";
+import { KelpForest, Seagrass, sandHeight } from "./Flora";
+import { MarineSnow, SunShafts, SurfaceFromBelow } from "./Water";
 import { MODEL_CONFIG, SPECIES_MODEL, type ModelId } from "./modelConfig";
 
 // The 3D layer of a dive. It is purely visual: gameplay (positions, input, scanning) stays in
@@ -72,9 +74,8 @@ function Seafloor({ worldW, floorY, look }: { worldW: number; floorY: number; lo
     g.rotateX(-Math.PI / 2);
     const p = g.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i);
-      const h = Math.sin(x * 0.35) * 0.25 + Math.sin(x * 1.1 + z * 0.7) * 0.12 + Math.sin(z * 0.45 + x * 0.2) * 0.35 + (z < -8 ? (-8 - z) * 0.18 : 0);
-      p.setY(i, h);
+      // local -> world: x + worldW / 2, z - 10 (the mesh position below)
+      p.setY(i, sandHeight(p.getX(i) + worldW / 2, p.getZ(i) - 10, worldW));
     }
     g.computeVertexNormals();
     return g;
@@ -149,45 +150,6 @@ function Scenery({ zoneIndex, worldW, floorY }: { zoneIndex: number; worldW: num
   );
 }
 
-/** Swaying kelp forest (sunlit) / sparse stalks (twilight). */
-function Kelp({ worldW, floorY, zoneIndex }: { worldW: number; floorY: number; zoneIndex: number }) {
-  const count = zoneIndex === 0 ? 120 : zoneIndex === 1 ? 18 : 0;
-  const mesh = useRef<THREE.InstancedMesh>(null);
-  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
-  const geo = useMemo(() => { const g = new THREE.PlaneGeometry(0.14, 1, 1, 24); g.translate(0, 0.5, 0); return g; }, []);
-  const mat = useMemo(() => {
-    const m = new THREE.MeshStandardMaterial({ color: "#ffffff", side: THREE.DoubleSide, roughness: 0.55, transparent: true, opacity: 0.92 });
-    m.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nuniform float uTime;")
-        .replace("#include <begin_vertex>", `#include <begin_vertex>
-float ph = instanceMatrix[3].x * 1.7 + instanceMatrix[3].z;
-float h = uv.y;
-transformed.x += sin(uTime * 0.9 + ph + h * 2.5) * 0.35 * h * h;
-transformed.z += cos(uTime * 0.7 + ph) * 0.18 * h * h;
-transformed.x *= (1.0 - h * 0.55) * (1.0 + sin(h * 26.0 + ph) * 0.45); // tapering, ruffled blade`);
-    };
-    return m;
-  }, [uniforms, zoneIndex]);
-  useEffect(() => {
-    if (!mesh.current) return;
-    const r = rng(77 + zoneIndex);
-    const m4 = new THREE.Matrix4();
-    for (let i = 0; i < count; i++) {
-      const h = 2.5 + r() * 5;
-      m4.compose(new THREE.Vector3(r() * (worldW + 4) - 2, floorY - 0.1, -1 - r() * 12), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, r() * Math.PI, 0)), new THREE.Vector3(1 + r() * 0.6, h, 1));
-      mesh.current.setMatrixAt(i, m4);
-      mesh.current.setColorAt(i, new THREE.Color().setHSL(0.24 + r() * 0.08, 0.45 + r() * 0.2, (zoneIndex === 0 ? 0.2 : 0.1) + r() * 0.1));
-    }
-    mesh.current.instanceMatrix.needsUpdate = true;
-    if (mesh.current.instanceColor) mesh.current.instanceColor.needsUpdate = true;
-  }, [count, worldW, floorY, zoneIndex]);
-  useFrame((_, dt) => { uniforms.uTime.value += dt; });
-  if (!count) return null;
-  return <instancedMesh ref={mesh} args={[geo, mat, count]} frustumCulled={false} />;
-}
-
 /**
  * One animal, following its gameplay swimmer. Turns are a real U-turn: the body swings through
  * depth (away from the camera) instead of spinning on the spot, and it pitches with its climb.
@@ -238,7 +200,7 @@ function Diver3D({ body, onReady, look, length }: { body: Ref<{ x: number; y: nu
     const speed = Math.hypot(b.vx, b.vy);
     const e = Math.min(1, speed / 260);
     effort.current += (e - effort.current) * (1 - Math.exp(-3 * dt));
-    tempo.current = 0.45 + effort.current * 1.1;
+    tempo.current = 0.55 + effort.current * 0.75; // ~0.4 Hz lazy finning up to ~0.9 Hz at full speed
     // Head leads the climb/dive; level out when drifting.
     const p = THREE.MathUtils.clamp(-b.vy / (Math.abs(b.vx) + 160), -0.5, 0.5);
     pitch.current += (p - pitch.current) * (1 - Math.exp(-4 * dt));
@@ -272,6 +234,7 @@ export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmer
   const floorY = -(view.h * 0.93) / U;
   const W = worldW / U;
   const dist = (view.h / U / 2) / Math.tan(((FOV / 2) * Math.PI) / 180);
+  const lite = view.w < 760; // phones: fewer plants and particles
   return (
     <Canvas
       className="ocean-3d"
@@ -285,7 +248,11 @@ export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmer
       <Rig view={view} camera={camera} />
       <Lights look={look} body={body} />
       <Seafloor worldW={W} floorY={floorY} look={look} />
-      <Kelp worldW={W} floorY={floorY} zoneIndex={zoneIndex} />
+      <KelpForest zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
+      <Seagrass zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
+      {zoneIndex === 0 && <SurfaceFromBelow worldW={W} />}
+      <SunShafts zoneIndex={zoneIndex} worldW={W} floorY={floorY} />
+      <MarineSnow zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
       <Suspense fallback={null}><Scenery zoneIndex={zoneIndex} worldW={W} floorY={floorY} /></Suspense>
       {speciesIds.filter((id) => SPECIES_MODEL[id]).map((id) => (
         <Suspense key={id} fallback={null}><Animal speciesId={id} swimmers={swimmers} onReady={onModelReady} /></Suspense>
