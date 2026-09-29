@@ -88,17 +88,26 @@ vec3 rigKick(vec3 a) {
   // Hips: the stroke itself, long and even.
   float wh = smoothstep(-0.02, -0.16, s);
   p.xy = rot2(p.xy, vec2(-0.08, 0.04) * L, wh * leg * amp * 0.2 * sin(ph));
-  // Arms: out of the T-pose, lowered a little and swung back to rest along the sides. Still.
+  // Upper body flows with the same rhythm as the legs (never faster), so the whole diver moves as one:
+  // relaxed arms with a soft elbow, drifting a little against each kick; the torso rolls gently.
+  float beat = sin(uTime * uSpeed);                       // left-leg stroke; right leg is the opposite
   float shoulderZ = 0.12 * L;
-  float wArm = smoothstep(shoulderZ, shoulderZ + 0.08 * L, abs(a.z)) * smoothstep(0.13, 0.23, s);
-  p.yz = rot2(p.yz, vec2(0.05 * L, side * shoulderZ), side * wArm * 0.3);
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), side * wArm * 1.5);
+  float armSel = smoothstep(0.13, 0.23, s);
+  float wArm = smoothstep(shoulderZ, shoulderZ + 0.08 * L, abs(a.z)) * armSel;
+  float wFore = smoothstep(0.27 * L, 0.35 * L, abs(a.z)) * armSel;
+  float armBeat = beat * side * -1.0;                     // each arm drifts against its own leg
+  // Elbow: a soft, relaxed bend (hands curl in towards the thighs), breathing slightly with the stroke.
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.31 * L), side * wFore * (0.38 + 0.06 * armBeat));
+  // Shoulder: lowered a little, swung back along the body, easing forward and back with the rhythm.
+  p.yz = rot2(p.yz, vec2(0.05 * L, side * shoulderZ), side * wArm * (0.38 + 0.05 * armBeat));
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), side * wArm * (1.42 + 0.07 * armBeat));
   // Head: raised to look ahead.
   float head = smoothstep(0.33, 0.37, s) * (1.0 - smoothstep(0.11, 0.15, a.y / L)) * (1.0 - wArm);
   p.xy = rot2(p.xy, vec2(0.345, 0.05) * L, head * 0.55);
-  // Breathing: the chest rises and falls very slightly.
-  float upper = smoothstep(-0.05, 0.15, s);
-  p.xy = rot2(p.xy, vec2(-0.05, 0.04) * L, upper * 0.008 * sin(uTime * 1.1));
+  // Torso: a gentle roll with each kick and a slight rise and fall (carries head and arms; applied last).
+  float upper = smoothstep(-0.08, 0.16, s);
+  p.yz = rot2(p.yz, vec2(0.04, 0.0) * L, upper * 0.045 * beat);
+  p.xy = rot2(p.xy, vec2(-0.05, 0.04) * L, upper * (0.012 * sin(uTime * uSpeed * 2.0 + 0.6) + 0.006 * sin(uTime * 1.1)));
   return p;
 }`;
 

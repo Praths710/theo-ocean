@@ -343,3 +343,10 @@ kbd { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 5px
 
 .hud-xp.actionable { cursor: pointer; border-color: rgba(255, 209, 102, .55); box-shadow: 0 0 0 1px rgba(255, 209, 102, .25), 0 0 18px rgba(255, 209, 102, .18); }
 .hud-xp.actionable:hover { background: rgba(255, 209, 102, .12); }
+
+/* Next-zone progress: 3 scan steps + the checkpoint step */
+.step-bar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
+.step-bar span { height: 6px; border-radius: 999px; background: rgba(127, 216, 210, .16); transition: background .4s ease, box-shadow .4s ease; }
+.step-bar span.done { background: linear-gradient(90deg, #4fc3c9, #a7f1e5); box-shadow: 0 0 10px rgba(119, 223, 213, .55); }
+.step-bar span.cp { background: rgba(255, 209, 102, .2); }
+.step-bar span.cp.done { background: linear-gradient(90deg, #ffd166, #ffe7a8); box-shadow: 0 0 10px rgba(255, 209, 102, .55); }

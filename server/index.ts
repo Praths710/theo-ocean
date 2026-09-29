@@ -140,7 +140,6 @@ function buildApi() {
     if (!aiConfigured()) return res.status(503).json({ error: OFFLINE });
 
     const isEvent = Boolean(req.body?.isEvent);
-    if (!isEvent) updatePlayer(id, (r) => { r.state.xp += XP.question; });
 
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -168,7 +167,7 @@ function buildApi() {
   api.post("/quiz/answer", (req, res) => {
     const result = gradeQuiz(uid(req), String(req.body?.quizId ?? ""), Number(req.body?.answerIndex));
     if (!result) return res.status(409).json({ error: "That quiz has expired. Ask for a new one." });
-    const gained = result.correct ? XP.quizCorrect : XP.quizAttempt;
+    const gained = result.correct ? XP.quizCorrect : 0;
     updatePlayer(uid(req), (r) => { r.state.xp += gained; });
     res.json({ ...result, gained, ...snapshot(uid(req)) });
   });
@@ -202,12 +201,15 @@ function buildApi() {
     const passed = score >= passMark;
     const zoneIdx = zones.findIndex((z) => z.id === pending.zoneId);
     const next = zones[zoneIdx + 1];
+    const firstPass = passed && !rec.state.passedZones?.includes(pending.zoneId);
     updatePlayer(id, (r) => {
       r.pendingCheckpoint = undefined;
       r.state.quiz.asked += results.length;
       r.state.quiz.correct += score;
-      r.state.xp += score * XP.quizCorrect + (passed ? 100 : 0);
-      if (passed && !r.state.passedZones?.includes(pending.zoneId)) r.state.passedZones = [...(r.state.passedZones ?? []), pending.zoneId];
+      if (firstPass) {
+        r.state.xp += XP.checkpoint; // once per zone; retakes and failed tries give nothing
+        r.state.passedZones = [...(r.state.passedZones ?? []), pending.zoneId];
+      }
       const missed = pending.answers.filter((_, i) => !results[i].correct).map((a) => a.topic);
       r.history.push({ role: "user", content: `[GAME EVENT] The diver ${passed ? "PASSED" : "did not pass"} the ${zones[zoneIdx].name} checkpoint with ${score}/${results.length} (needed ${passMark}).${missed.length ? ` Missed: ${missed.join(", ")}.` : ""}` });
       r.history.push({ role: "assistant", content: passed ? `[proud] You passed the ${zones[zoneIdx].name} checkpoint!` : `[gentle] So close. Let's review and try again.` });

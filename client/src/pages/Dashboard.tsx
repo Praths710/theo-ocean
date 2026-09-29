@@ -50,7 +50,7 @@ export default function Dashboard() {
   const missions = [
     { name: "Scan your first creature", cur: Math.min(found, 1), max: 1, xp: 25 },
     { name: `Complete the Sunlit Reef logbook`, cur: sunlitFound, max: zones[0].species.length, xp: 100 },
-    { name: "Answer 5 quizzes correctly", cur: Math.min(state.quiz.correct, 5), max: 5, xp: 200 },
+    { name: "Answer 5 quizzes correctly", cur: Math.min(state.quiz.correct, 5), max: 5, xp: 50 }, // labels = the XP those actions really earn
     { name: `Pass the ${zones[maxZone].name} checkpoint`, cur: state.passedZones?.includes(zones[maxZone].id) ? 1 : 0, max: 1, xp: 100 },
     { name: "Scan 10 species", cur: Math.min(found, 10), max: 10, xp: 250 },
   ].filter((m) => m.cur < m.max).slice(0, 3);

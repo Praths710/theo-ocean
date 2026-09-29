@@ -10,9 +10,9 @@ const mock: SessionValue = {
   user: { id: "u_preview", username: "preview" },
   aiOnline: false,
   snap: {
-    maxZoneIndex: 4,
+    maxZoneIndex: q.has("fresh") ? 0 : 4,
     state: {
-      id: "u_preview", xp: 420, zoneId: q.get("zone") ?? "sunlit", discovered: ["hawksbill", "vaquita"], passedZones: ["sunlit", "twilight", "midnight", "abyss"],
+      id: "u_preview", xp: 420, zoneId: q.get("zone") ?? "sunlit", discovered: ["hawksbill", "vaquita"], passedZones: q.has("fresh") ? [] : ["sunlit", "twilight", "midnight", "abyss"],
       quiz: { asked: 4, correct: 3 },
       diver: { name: "Maya", suitHue: Number(q.get("hue") ?? 0), companionName: "Coral", voiceOn: false },
       learner: { summary: "New diver. Nothing known yet.", knowledgeLevel: "beginner", interests: [], strengths: [], gaps: [], ageBand: "unknown" },

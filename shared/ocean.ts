@@ -122,7 +122,11 @@ export const zones: Zone[] = [
   },
 ];
 
-export const XP = { discover: 25, quizCorrect: 40, quizAttempt: 5, question: 5 } as const;
+/**
+ * XP, kept simple and earn-once: scanning a new creature, a right answer in a practice quiz, and
+ * passing a zone's checkpoint the first time. Chatting, wrong answers and retakes give nothing.
+ */
+export const XP = { discover: 25, quizCorrect: 10, checkpoint: 100 } as const;
 
 export function findZone(id: string | undefined) {
   return zones.find((z) => z.id === id) ?? zones[0];

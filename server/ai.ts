@@ -44,7 +44,7 @@ function contextBlock(state: PlayerState, focusSpeciesId?: string) {
 - Current zone: ${zone.name} (level ${zone.level}, ${zone.depthLabel}, diver at ~${zone.depthMeters} m). ${zone.summary}
 - Species visible in this zone: ${zone.species.map((s) => `${s.name} (${s.scientific}, ${s.status})`).join("; ")}.
 - Species the player has inspected so far: ${state.discovered.map((id) => findSpecies(id)?.species.name).filter(Boolean).join(", ") || "none yet"}.
-- XP: ${state.xp}. ${next ? `To unlock the ${next.name}, the diver must scan every species in this zone and then pass the zone checkpoint quiz (they can start it at the bottom of the level). Scanned here: ${zone.species.filter((s) => state.discovered.includes(s.id)).length}/${zone.species.length}.` : "Deepest zone reached."}
+- XP: ${state.xp}. ${next ? `To unlock the ${next.name}, the diver scans 3 creatures in this zone, then answers the 3-question checkpoint (2 right passes; they can open it from the progress bar at the top right). Scanned here: ${zone.species.filter((s) => state.discovered.includes(s.id)).length}/3.` : "Deepest zone reached."}
 - Quiz record: ${state.quiz.correct}/${state.quiz.asked} correct.
 ${focus ? `- The player is currently looking at: ${focus.name}. Card facts: ${focus.details} Threats: ${focus.threats}.` : ""}
 

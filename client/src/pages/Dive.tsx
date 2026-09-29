@@ -412,7 +412,9 @@ export default function Dive() {
   const passedHere = Boolean(state.passedZones?.includes(zone.id));
   const nextUnlocked = nextZone && zoneIndex + 1 <= maxZone;
   // Unlock progress: scanning is 70% of the way, passing the checkpoint is the rest.
-  const unlockPct = !nextZone || passedHere ? 100 : Math.round((Math.min(foundHere, cpNeeded) / cpNeeded) * 70);
+  // Path to the next zone: one step per creature scanned (3) plus one for passing the checkpoint.
+  const steps = cpNeeded + 1;
+  const stepsDone = !nextZone || passedHere ? steps : Math.min(foundHere, cpNeeded);
   // The big next-level banner pops up for a few seconds when it becomes available (or when the diver
   // reaches the bottom), then gets out of the way. The XP chip and Space always open it.
   const promptKey = !nextZone ? "none" : nextUnlocked ? "deeper" : cpReady ? "checkpoint" : "locked";
@@ -506,10 +508,14 @@ export default function Dive() {
         <div className={`hud-xp ${nextZone && (nextUnlocked || cpReady) ? "actionable" : ""}`} role={nextZone && (nextUnlocked || cpReady) ? "button" : undefined} tabIndex={nextZone && (nextUnlocked || cpReady) ? 0 : undefined}
           onClick={() => { if (nextUnlocked) void changeZone(zoneIndex + 1); else if (nextZone && cpReady) setCheckpointOpen(true); }}>
           <div className="hud-xp-row">
-            <span className="hud-kicker">{!nextZone ? "DEEPEST ZONE" : passedHere ? `${nextZone.name.toUpperCase()} UNLOCKED` : cpReady ? "CHECKPOINT READY · 3 QUESTIONS" : `SCAN ${cpNeeded - foundHere} MORE TO UNLOCK THE CHECKPOINT`}</span>
+            <span className="hud-kicker">{!nextZone ? "DEEPEST ZONE" : passedHere ? `${nextZone.name.toUpperCase()} UNLOCKED` : cpReady ? "CHECKPOINT READY · TAP HERE" : `SCANNED ${foundHere}/${cpNeeded} · THEN THE CHECKPOINT`}</span>
             <b>{xp} XP</b>
           </div>
-          <div className="xp-bar"><span style={{ width: `${unlockPct}%` }} /></div>
+          <div className="step-bar" aria-label={`${stepsDone} of ${steps} steps to the next zone`}>
+            {Array.from({ length: steps }, (_, i) => (
+              <span key={i} className={`${i < stepsDone ? "done" : ""} ${i === steps - 1 ? "cp" : ""}`} title={i === steps - 1 ? "Checkpoint" : `Scan ${i + 1}`} />
+            ))}
+          </div>
         </div>
         <button className="hud-btn" onClick={() => { const m = !muted; setMuted(m); oceanAudio.setMuted(m); }} aria-label={muted ? "Unmute ocean sounds" : "Mute ocean sounds"}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
       </header>
