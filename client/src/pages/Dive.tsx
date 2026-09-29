@@ -256,7 +256,7 @@ export default function Dive() {
       if (follow.current) {
         const s = swimmers.current.find((w) => w.id === follow.current);
         if (s) {
-          goal = { x: s.x - Math.sign(s.x - b.x || 1) * (s.w * 0.45 + 70), y: s.y };
+          goal = { x: s.x - Math.sign(s.x - b.x || 1) * (s.w * 0.42 + DIVER_W * 0.32 + 30), y: s.y }; // just outside its body
           if (Math.hypot(s.x - b.x, s.y - b.y) < s.w * 0.45 + 110) void scan(s.id);
         } else follow.current = null;
       }
@@ -352,8 +352,7 @@ export default function Dive() {
           if (e < 1) {
             // Push out along the shortest way (mostly over or under, like swimming round it).
             const k = e > 1e-4 ? 1 / Math.sqrt(e) : 1;
-            const tx = s.x + dx * k, ty = e > 1e-4 ? s.y + dy * k : s.y - ry;
-            b.x += (tx - b.x) * 0.25; b.y += (ty - b.y) * 0.25;
+            b.x = s.x + dx * k; b.y = e > 1e-4 ? s.y + dy * k : s.y - ry; // rest exactly on the edge: no jitter
             const nx = dx / rx, ny = dy / ry, nl = Math.hypot(nx, ny) || 1;
             const into = (b.vx * nx + b.vy * ny) / nl;
             if (into < 0) { b.vx -= (into * nx) / nl; b.vy -= (into * ny) / nl; } // cancel motion into the body

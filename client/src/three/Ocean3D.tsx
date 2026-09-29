@@ -199,17 +199,17 @@ function Diver3D({ body, onReady, look, length }: { body: Ref<{ x: number; y: nu
     yaw.current += (target - yaw.current) * (1 - Math.exp(-4 * dt));
     const speed = Math.hypot(b.vx, b.vy);
     const e = Math.min(1, speed / 260);
-    effort.current += (e - effort.current) * (1 - Math.exp(-3 * dt));
-    tempo.current = 0.55 + effort.current * 0.75; // ~0.4 Hz lazy finning up to ~0.9 Hz at full speed
+    effort.current += (e - effort.current) * (1 - Math.exp(-1.2 * dt)); // slow to change: a steady rhythm
+    tempo.current = 0.6 + effort.current * 0.5; // ~0.4 Hz lazy finning up to ~0.75 Hz at full speed
     // Head leads the climb/dive; level out when drifting.
     const p = THREE.MathUtils.clamp(-b.vy / (Math.abs(b.vx) + 160), -0.5, 0.5);
-    pitch.current += (p - pitch.current) * (1 - Math.exp(-4 * dt));
+    pitch.current += (p - pitch.current) * (1 - Math.exp(-1.8 * dt));
     const turning = Math.sin(yaw.current);
     const bob = Math.sin(t.current * 1.3) * 0.03 * (1 - effort.current); // floating at rest
     group.current.position.set(b.x / U, -b.y / U + bob, 0.45 - Math.abs(turning) * 0.6); // just in front of the animals' plane
     // YXZ: turn first, then roll/pitch about the diver's own body axes (so leaning into a turn
     // never tips the head up or down).
-    group.current.rotation.set(turning * 0.25, yaw.current, pitch.current + Math.sin(t.current * 0.9) * 0.03, "YXZ");
+    group.current.rotation.set(turning * 0.2, yaw.current, pitch.current, "YXZ");
   });
   return (
     <group ref={group}>

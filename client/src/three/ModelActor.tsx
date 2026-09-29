@@ -16,12 +16,14 @@ export function preloadModel(id: ModelId) {
   if (cfg) useGLTF.preload(cfg.file, false, MESHOPT);
 }
 
-type SwimUniforms = { uTime: { value: number }; uAmp: { value: number }; uFreq: { value: number }; uSpeed: { value: number }; uLen: { value: number }; uMode: { value: number }; uEffort: { value: number }; uInvWorld: { value: THREE.Matrix4 }; uWorld: { value: THREE.Matrix4 } };
+type SwimUniforms = { uTime: { value: number }; uAmp: { value: number }; uFreq: { value: number }; uSpeed: { value: number }; uLen: { value: number }; uMode: { value: number }; uEffort: { value: number } };
+/** Mesh space <-> actor space. A mesh never moves inside its actor, so these are fixed per mesh. */
+type MeshSpace = { uToActor: { value: THREE.Matrix4 }; uFromActor: { value: THREE.Matrix4 } };
 
 /** Adds a travelling-wave bend (fish) or leg kick (diver) to a material, in actor space. */
-function addSwim(material: THREE.Material, u: SwimUniforms, gear?: { u: GearUniforms; glsl: string; key: string }) {
+function addSwim(material: THREE.Material, u: SwimUniforms, space: MeshSpace, gear?: { u: GearUniforms; glsl: string; key: string }) {
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, u);
+    Object.assign(shader.uniforms, u, space);
     if (gear) {
       Object.assign(shader.uniforms, gear.u);
       shader.fragmentShader = shader.fragmentShader
@@ -31,21 +33,20 @@ function addSwim(material: THREE.Material, u: SwimUniforms, gear?: { u: GearUnif
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", `#include <common>
 uniform float uTime; uniform float uAmp; uniform float uFreq; uniform float uSpeed; uniform float uLen; uniform float uMode; uniform float uEffort;
-uniform mat4 uInvWorld; uniform mat4 uWorld;
+uniform mat4 uToActor; uniform mat4 uFromActor;
 varying float vFin;
 ${KICK_RIG}`)
       .replace("#include <beginnormal_vertex>", `#include <beginnormal_vertex>
 if (uMode > 0.5) {
   // Bend normals with the joints (finite difference through the same rig) so lighting stays right.
-  mat4 toActor = uInvWorld * modelMatrix;
-  vec3 a0 = (toActor * vec4(position, 1.0)).xyz;
-  vec3 e = normalize(mat3(toActor) * objectNormal) * 0.004 * uLen;
-  objectNormal = normalize(inverse(mat3(toActor)) * (rigKick(a0 + e) - rigKick(a0)));
+  vec3 a0 = (uToActor * vec4(position, 1.0)).xyz;
+  vec3 e = normalize(mat3(uToActor) * objectNormal) * 0.01 * uLen;
+  objectNormal = normalize(mat3(uFromActor) * (rigKick(a0 + e) - rigKick(a0)));
 }`)
       .replace("#include <begin_vertex>", `#include <begin_vertex>
 {
   // Work in actor space (x = tail->head axis, normalised by body length).
-  vec4 a = uInvWorld * modelMatrix * vec4(transformed, 1.0);
+  vec4 a = uToActor * vec4(transformed, 1.0);
   float s = a.x / uLen; // -0.5 tail .. +0.5 head
   vFin = smoothstep(-0.43, -0.455, s);
   vec3 d = vec3(0.0);
@@ -55,7 +56,7 @@ if (uMode > 0.5) {
   } else {
     d = rigKick(a.xyz) - a.xyz;
   }
-  vec4 back = inverse(modelMatrix) * (uWorld * vec4(d, 0.0)); // actor space -> mesh space
+  vec4 back = uFromActor * vec4(d, 0.0); // actor space -> mesh space
   transformed += back.xyz;
 }`);
   };
@@ -65,48 +66,39 @@ if (uMode > 0.5) {
 
 // A small joint chain for the (unrigged, T-posed) diver, in actor space where x runs tail->head
 // and s = x / length. Joint positions were measured with scripts/diver-profile.mjs.
-// Distal joints are applied first, all around their rest positions (forward kinematics).
+// Real divers are calm: long, even fin strokes from the hips with softly bent knees, arms resting
+// still along the body, head up. Only the legs cycle; everything else holds a relaxed pose, and
+// every bend is modest with wide blends so the mesh never stretches.
 const KICK_RIG = `
 vec2 rot2(vec2 p, vec2 c, float ang) { p -= c; float cs = cos(ang), sn = sin(ang); return c + vec2(cs * p.x - sn * p.y, sn * p.x + cs * p.y); }
 vec3 rigKick(vec3 a) {
   float L = uLen;
   float s = a.x / L;
   float side = a.z >= 0.0 ? 1.0 : -1.0;
-  float ph = uTime * uSpeed + side * 3.14159;             // legs kick in opposition
-  float amp = 0.3 + 0.7 * uEffort;                        // lazy sculling at rest, full kicks when swimming hard
-  float leg = smoothstep(0.004, 0.03, abs(a.z) / L);      // keep the crotch seam together
+  float ph = uTime * uSpeed + side * 3.14159;             // legs stroke in opposition
+  float amp = 0.75 + 0.25 * uEffort;                      // nearly constant: same rhythm, a bit wider when fast
+  float leg = smoothstep(0.004, 0.035, abs(a.z) / L);     // keep the crotch seam together
   vec3 p = a;
-  // Ankles: point the feet so fins trail behind (the model stands flat-footed), fins flex with the stroke.
-  float wa = smoothstep(-0.43, -0.46, s);
-  p.xy = rot2(p.xy, vec2(-0.445, 0.04) * L, wa * (-1.25 + leg * amp * 0.45 * sin(ph - 2.1)));
-  // Knees: bend on the up-stroke only.
-  float wk = smoothstep(-0.22, -0.3, s);
-  p.xy = rot2(p.xy, vec2(-0.26, 0.05) * L, -wk * leg * amp * (0.1 + 0.42 * (0.5 + 0.5 * sin(ph - 1.1))));
-  // Hips: the kick itself.
-  float wh = smoothstep(-0.03, -0.13, s);
-  p.xy = rot2(p.xy, vec2(-0.08, 0.04) * L, wh * leg * amp * 0.32 * sin(ph));
-  // Upper body: the model stands in a T-pose, so lying prone it would stare at the seabed with
-  // its arms stuck out. Real divers hold their head up to look ahead and tuck their arms, elbows
-  // bent, hands together under the chest. Everything here moves slowly (breathing, gentle sculling).
-  float slow = uTime * uSpeed * 0.5;                      // one arm/torso cycle per two kicks
-  float breathe = sin(uTime * 1.3);
-  // Arms: forearm folds forward and in (elbow), the arm drops under the body and sweeps back (shoulder).
-  float shoulderZ = 0.13 * L;
-  float armSel = smoothstep(0.14, 0.22, s) * (1.0 - smoothstep(0.38, 0.42, s));
-  float wArm = smoothstep(shoulderZ, shoulderZ + 0.04 * L, abs(a.z)) * armSel;
-  float wFore = smoothstep(0.29 * L, 0.33 * L, abs(a.z)) * armSel;
-  float scull = sin(slow + side * 0.4);
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.31 * L), -side * wFore * (1.75 + 0.12 * scull * (0.4 + uEffort)));
-  p.yz = rot2(p.yz, vec2(0.06 * L, side * shoulderZ), side * wArm * (1.05 + 0.05 * breathe));
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), side * wArm * (0.85 + 0.1 * scull * (0.3 + uEffort)));
-  // Head: tilted back so the diver looks forward, with a slow look around.
+  // Ankles: feet pointed so the fins trail behind; the fins follow the stroke a little late.
+  float wa = smoothstep(-0.425, -0.465, s);
+  p.xy = rot2(p.xy, vec2(-0.445, 0.04) * L, wa * (-1.3 + leg * amp * 0.26 * sin(ph - 1.5)));
+  // Knees: a soft bend that deepens slightly on the up-stroke.
+  float wk = smoothstep(-0.21, -0.31, s);
+  p.xy = rot2(p.xy, vec2(-0.26, 0.05) * L, -wk * leg * (0.1 + amp * 0.14 * (0.5 + 0.5 * sin(ph - 0.9))));
+  // Hips: the stroke itself, long and even.
+  float wh = smoothstep(-0.02, -0.16, s);
+  p.xy = rot2(p.xy, vec2(-0.08, 0.04) * L, wh * leg * amp * 0.2 * sin(ph));
+  // Arms: out of the T-pose, lowered a little and swung back to rest along the sides. Still.
+  float shoulderZ = 0.12 * L;
+  float wArm = smoothstep(shoulderZ, shoulderZ + 0.08 * L, abs(a.z)) * smoothstep(0.13, 0.23, s);
+  p.yz = rot2(p.yz, vec2(0.05 * L, side * shoulderZ), side * wArm * 0.3);
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), side * wArm * 1.5);
+  // Head: raised to look ahead.
   float head = smoothstep(0.33, 0.37, s) * (1.0 - smoothstep(0.11, 0.15, a.y / L)) * (1.0 - wArm);
-  p.xy = rot2(p.xy, vec2(0.345, 0.05) * L, head * (0.62 + 0.05 * sin(uTime * 0.6)));
-  p.xz = rot2(p.xz, vec2(0.345, 0.0) * L, head * 0.14 * sin(uTime * 0.37) * (1.0 - uEffort * 0.6));
-  // Chest: rises with the breath and rolls a little with the kicks (applied last: it carries head and arms).
-  float upper = smoothstep(-0.02, 0.12, s);
-  p.xy = rot2(p.xy, vec2(-0.04, 0.04) * L, upper * (0.015 * breathe + amp * 0.012 * sin(slow * 2.0)));
-  p.yz = rot2(p.yz, vec2(0.04, 0.0) * L, upper * amp * 0.035 * sin(uTime * uSpeed));
+  p.xy = rot2(p.xy, vec2(0.345, 0.05) * L, head * 0.55);
+  // Breathing: the chest rises and falls very slightly.
+  float upper = smoothstep(-0.05, 0.15, s);
+  p.xy = rot2(p.xy, vec2(-0.05, 0.04) * L, upper * 0.008 * sin(uTime * 1.1));
   return p;
 }`;
 
@@ -157,7 +149,7 @@ export default function ModelActor({ id, length, children, onReady, tempo, look,
 
   const uniforms = useMemo<SwimUniforms>(() => ({
     uTime: { value: 0 }, uAmp: { value: cfg.swim?.amp ?? 0 }, uFreq: { value: cfg.swim?.freq ?? 6 }, uSpeed: { value: cfg.swim?.speed ?? 4 },
-    uLen: { value: target }, uMode: { value: cfg.swim?.mode === "kick" ? 1 : 0 }, uEffort: { value: 1 }, uInvWorld: { value: new THREE.Matrix4() }, uWorld: { value: new THREE.Matrix4() },
+    uLen: { value: target }, uMode: { value: cfg.swim?.mode === "kick" ? 1 : 0 }, uEffort: { value: 1 },
   }), [cfg, target]);
 
   const gearU = useMemo<GearUniforms>(() => ({ uSuit: { value: new THREE.Color() }, uPanel: { value: new THREE.Color() }, uFins: { value: new THREE.Color() }, uTank: { value: new THREE.Color() }, uGearOn: { value: 0 } }), []);
@@ -185,9 +177,14 @@ export default function ModelActor({ id, length, children, onReady, tempo, look,
     const box2 = new THREE.Box3().setFromObject(model, true);
     const c = box2.getCenter(new THREE.Vector3());
     model.position.sub(c);
+    model.updateMatrixWorld(true);
     model.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
+      // Mesh space -> actor space: the local transforms from this mesh up to (and including) the model root.
+      const toActor = new THREE.Matrix4();
+      for (let n: THREE.Object3D | null = m; n; n = n === model ? null : n.parent) { n.updateMatrix(); toActor.premultiply(n.matrix); }
+      const space: MeshSpace = { uToActor: { value: toActor }, uFromActor: { value: toActor.clone().invert() } };
       m.frustumCulled = false; // skinned bounds are unreliable
       m.castShadow = false;
       m.userData.origMaterial ??= m.material; // always derive from the original, so re-runs never stack tints
@@ -201,7 +198,7 @@ export default function ModelActor({ id, length, children, onReady, tempo, look,
           : mat.name === "Diver_Body" ? { u: gearU, glsl: BODY_GLSL, key: "diver-body" }
           : mat.name === "Diver_Objects" ? { u: gearU, glsl: TANK_GLSL, key: "diver-gear" } : undefined;
         if (id === "diver" && mat.name === "Diver_Objects") c2.metalness = Math.min(c2.metalness, 0.45); // painted tank, not bare chrome
-        if (cfg.swim && !names.length) addSwim(c2, uniforms, gear);
+        if (cfg.swim && !names.length) addSwim(c2, uniforms, space, gear);
         return c2;
       });
       m.material = Array.isArray(orig) ? mats : mats[0];
@@ -224,11 +221,6 @@ export default function ModelActor({ id, length, children, onReady, tempo, look,
     uniforms.uTime.value += delta * k;
     if (effort) uniforms.uEffort.value = effort.current;
     if (tempo) for (const a of Object.values(actions)) a?.setEffectiveTimeScale((cfg.clipSpeed ?? 1) * k);
-    if (actor.current) {
-      actor.current.updateMatrixWorld();
-      uniforms.uWorld.value.copy(actor.current.matrixWorld);
-      uniforms.uInvWorld.value.copy(actor.current.matrixWorld).invert();
-    }
   });
 
   return (
