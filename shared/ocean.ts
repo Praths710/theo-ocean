@@ -150,11 +150,15 @@ export function maxZoneIndex(state: Pick<PlayerState, "passedZones">) {
 export function checkpointStatus(state: Pick<PlayerState, "discovered" | "passedZones">, zoneId: string) {
   const zone = findZone(zoneId);
   const scanned = zone.species.filter((s) => state.discovered.includes(s.id)).length;
-  return { zoneId: zone.id, scanned, total: zone.species.length, allScanned: scanned === zone.species.length, passed: Boolean(state.passedZones?.includes(zone.id)) };
+  const needed = Math.min(CHECKPOINT_QUESTIONS, zone.species.length);
+  return { zoneId: zone.id, scanned, total: zone.species.length, needed, ready: scanned >= needed, allScanned: scanned === zone.species.length, passed: Boolean(state.passedZones?.includes(zone.id)) };
 }
 
-/** Checkpoint pass mark: every question right, except zones with 4+ species allow one miss. */
-export const checkpointPassMark = (questions: number) => (questions >= 4 ? questions - 1 : questions);
+/** A zone checkpoint is 3 questions, each about a different creature the diver has scanned. */
+export const CHECKPOINT_QUESTIONS = 3;
+
+/** Checkpoint pass mark: 2 of 3 (one miss allowed); a shorter quiz needs every answer. */
+export const checkpointPassMark = (questions: number) => (questions >= 3 ? questions - 1 : questions);
 
 export type LearnerModel = {
   summary: string;
@@ -165,12 +169,48 @@ export type LearnerModel = {
   ageBand: "child" | "teen" | "adult" | "unknown";
 };
 
+/** Colours of the diver's gear (hex). */
+export type DiverLook = { suit: string; panel: string; fins: string; tank: string };
+
 export type DiverStyle = {
   name: string;
-  suitHue: number; // degrees for hue-rotate
+  suitHue: number; // legacy single colour, used when `look` is missing
+  look?: DiverLook;
   companionName: string;
   voiceOn: boolean;
 };
+
+/** Ready-made outfits for the locker. */
+export const DIVER_PRESETS: { id: string; name: string; look: DiverLook }[] = [
+  { id: "reef", name: "Reef Explorer", look: { suit: "#0e4f5c", panel: "#2ec4b6", fins: "#ffd23f", tank: "#ffd23f" } },
+  { id: "coral", name: "Coral Pro", look: { suit: "#16181f", panel: "#ff5d5d", fins: "#ff5d5d", tank: "#e9edf1" } },
+  { id: "deep", name: "Deep Ops", look: { suit: "#101317", panel: "#3b4757", fins: "#1a1d22", tank: "#2e343c" } },
+  { id: "sunset", name: "Sunset Glide", look: { suit: "#2b1d40", panel: "#ff9f1c", fins: "#ff9f1c", tank: "#ffbf69" } },
+  { id: "arctic", name: "Arctic", look: { suit: "#1b3a57", panel: "#bfe9ff", fins: "#f4f8fb", tank: "#d6e2ea" } },
+  { id: "kelp", name: "Kelp Ranger", look: { suit: "#1d3a2a", panel: "#a3d65c", fins: "#a3d65c", tank: "#6f8f3c" } },
+];
+
+/** Colour choices per part in the locker. */
+export const GEAR_SWATCHES = ["#101317", "#1b3a57", "#0e4f5c", "#1d3a2a", "#2b1d40", "#5a1f2e", "#2ec4b6", "#3aa0ff", "#a3d65c", "#ffd23f", "#ff9f1c", "#ff5d5d", "#e04f9c", "#bfe9ff", "#f4f8fb", "#3b4757"];
+
+const HEX = /^#[0-9a-f]{6}$/i;
+export const isHexColor = (v: unknown): v is string => typeof v === "string" && HEX.test(v);
+
+/** The diver's current outfit (older saves only have a suit hue). */
+export function diverLook(d: Pick<DiverStyle, "look" | "suitHue">): DiverLook {
+  if (d.look) return d.look;
+  const base = DIVER_PRESETS[0].look;
+  return { ...base, suit: hslToHex((178 + d.suitHue) % 360, 0.6, 0.3) };
+}
+
+function hslToHex(h: number, s: number, l: number) {
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - s * Math.min(l, 1 - l) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(c * 255).toString(16).padStart(2, "0");
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
 
 export type PlayerState = {
   id: string;

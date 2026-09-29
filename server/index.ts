@@ -3,7 +3,7 @@ import express, { type Request, type Response } from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { XP, checkpointPassMark, checkpointStatus, findSpecies, findZone, maxZoneIndex, zones, type CheckpointResult } from "../shared/ocean";
+import { XP, isHexColor, checkpointPassMark, checkpointStatus, findSpecies, findZone, maxZoneIndex, zones, type CheckpointResult } from "../shared/ocean";
 import { aiConfigured, generateQuiz, gradeQuiz, streamCompanion } from "./ai";
 import { buildCheckpoint } from "./quiz";
 import { nanoid } from "nanoid";
@@ -93,6 +93,10 @@ function buildApi() {
       if (typeof b.name === "string") d.name = b.name.trim().slice(0, 24) || d.name;
       if (typeof b.companionName === "string") d.companionName = b.companionName.trim().slice(0, 24) || d.companionName;
       if (Number.isFinite(b.suitHue)) d.suitHue = ((Math.round(Number(b.suitHue)) % 360) + 360) % 360;
+      if (b.look && typeof b.look === "object") {
+        const l = b.look as Record<string, unknown>;
+        if (isHexColor(l.suit) && isHexColor(l.panel) && isHexColor(l.fins) && isHexColor(l.tank)) d.look = { suit: l.suit, panel: l.panel, fins: l.fins, tank: l.tank };
+      }
       if (typeof b.voiceOn === "boolean") d.voiceOn = b.voiceOn;
     });
     res.json(snapshot(uid(req)));
@@ -175,10 +179,10 @@ function buildApi() {
     const { state } = getPlayer(id);
     const status = checkpointStatus(state, state.zoneId);
     const zone = findZone(state.zoneId);
-    if (!status.allScanned) {
-      return res.status(409).json({ error: `Scan every creature in the ${zone.name} first (${status.scanned}/${status.total} found). The checkpoint asks about each one.` });
+    if (!status.ready) {
+      return res.status(409).json({ error: `Scan ${status.needed} creatures in the ${zone.name} first (${status.scanned}/${status.needed} so far). The checkpoint asks about the ones you've scanned.` });
     }
-    const questions = buildCheckpoint(zone.id);
+    const questions = buildCheckpoint(zone.id, state.discovered);
     const cpId = nanoid(10);
     updatePlayer(id, (r) => {
       r.pendingCheckpoint = { id: cpId, zoneId: zone.id, answers: questions.map((q) => ({ correctIndex: q.correctIndex, explanation: q.explanation, topic: q.topic })) };
@@ -263,7 +267,21 @@ async function startServer() {
   const port = process.env.PORT || (isProd ? 3000 : 3001);
   server.listen(port, () => {
     console.log(`TheO server on http://localhost:${port}/  (AI: ${llmLabel()}, voice: ${ttsLabel()}, storage: ${persistLabel()})`);
+    keepAwake();
   });
+}
+
+/**
+ * Render's free plan sleeps a service after 15 minutes without inbound traffic. Calling our own
+ * public URL every 9 minutes counts as traffic, so the game stays up around the clock.
+ * (RENDER_EXTERNAL_URL is set by Render; KEEP_AWAKE_URL can override it; off when neither exists.)
+ */
+function keepAwake() {
+  const base = process.env.KEEP_AWAKE_URL ?? process.env.RENDER_EXTERNAL_URL;
+  if (!base) return;
+  const ping = () => fetch(`${base.replace(/\/$/, "")}/api/health`, { signal: AbortSignal.timeout(30_000) }).catch((err) => console.warn("[keep-awake]", (err as Error).message));
+  setInterval(ping, 9 * 60_000).unref();
+  console.log(`[keep-awake] pinging ${base} every 9 minutes`);
 }
 
 startServer().catch(console.error);

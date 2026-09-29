@@ -1,6 +1,6 @@
 import type { Checkpoint, CheckpointResult, PlayerState, Quiz } from "@shared/ocean";
 
-export type CheckpointStatus = { zoneId: string; scanned: number; total: number; allScanned: boolean; passed: boolean };
+export type CheckpointStatus = { zoneId: string; scanned: number; total: number; needed: number; ready: boolean; allScanned: boolean; passed: boolean };
 export type PlayerSnapshot = { state: PlayerState; maxZoneIndex: number; checkpoint?: CheckpointStatus };
 export type User = { id: string; username: string };
 export type AuthResult = PlayerSnapshot & { user: User };

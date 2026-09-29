@@ -1,4 +1,4 @@
-import { zones, type Species, type Zone } from "../shared/ocean";
+import { CHECKPOINT_QUESTIONS, zones, type Species, type Zone } from "../shared/ocean";
 
 // Quizzes are built ONLY from the facts shown on each species card (habitat, threats,
 // what helps, status, scientific name, key fact), so every question checks something the
@@ -35,10 +35,13 @@ const TEMPLATES: Template[] = [
 ];
 
 /** Zone checkpoint: one card-based question per species in the zone, varied question types. */
-export function buildCheckpoint(zoneId: string): Omit<BuiltQuiz, "key">[] {
+export function buildCheckpoint(zoneId: string, discovered: string[]): Omit<BuiltQuiz, "key">[] {
   const zone = zones.find((z) => z.id === zoneId) ?? zones[0];
   const kinds = shuffle(TEMPLATES.filter((t) => t.kind !== "zone"));
-  return shuffle(zone.species).map((s, i) => {
+  // Only creatures the diver has scanned (their cards are what the questions come from).
+  const scanned = zone.species.filter((s) => discovered.includes(s.id));
+  const pool = scanned.length >= CHECKPOINT_QUESTIONS ? scanned : zone.species;
+  return shuffle(pool).slice(0, CHECKPOINT_QUESTIONS).map((s, i) => {
     const t = kinds[i % kinds.length];
     const q = t.build(s, zone);
     const options = shuffle([q.correct, ...q.wrong.slice(0, 3)]);

@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpRight, Brain, Home, Lock, MessageCircle, Mic, ShieldCheck, Volume2, VolumeX, X } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { zones, type Species } from "@shared/ocean";
+import { CHECKPOINT_QUESTIONS, diverLook, zones, type Species } from "@shared/ocean";
 import OceanBackdrop, { type DiverProbe, type OceanHandle } from "@/components/ocean/OceanBackdrop";
 import { SeascapeStrip } from "@/components/ocean/Seascape";
 import Ocean3D from "@/three/Ocean3D";
 import { useProgress } from "@react-three/drei";
 import { SPECIES_MODEL } from "@/three/modelConfig";
-import { suitColor } from "@/lib/suit";
 import Diver from "@/components/art/Diver";
 import Creature, { type Art } from "@/components/art/Creature";
 import { speciesArt } from "@/components/art/speciesArt";
@@ -95,8 +94,10 @@ export default function Dive() {
   // Latest unlock state for the keyboard handler.
   const maxZoneRef = useRef(maxZone);
   maxZoneRef.current = maxZone;
-  const allScannedRef = useRef(false);
-  allScannedRef.current = zone.species.every((s) => state.discovered.includes(s.id));
+  // The checkpoint opens once CHECKPOINT_QUESTIONS creatures here are scanned (it asks about those).
+  const cpNeeded = Math.min(CHECKPOINT_QUESTIONS, zone.species.length);
+  const cpReadyRef = useRef(false);
+  cpReadyRef.current = zone.species.filter((s) => state.discovered.includes(s.id)).length >= cpNeeded;
   const edgeRef = useRef<"top" | "bottom" | null>(null);
 
   const card = useMemo(() => zone.species.find((s) => s.id === cardId) ?? null, [zone, cardId]);
@@ -182,7 +183,7 @@ export default function Dive() {
     if (!target || busyZone.current) return;
     if (index > maxZone) {
       oceanAudio.sfx("lock");
-      toast(`${target.name} is locked`, { description: `Scan every creature in the ${zones[index - 1]?.name ?? zone.name}, then pass its checkpoint quiz at the bottom of the level.` });
+      toast(`${target.name} is locked`, { description: `Scan 3 creatures in the ${zones[index - 1]?.name ?? zone.name}, then answer its 3-question checkpoint.` });
       return;
     }
     busyZone.current = true;
@@ -215,10 +216,11 @@ export default function Dive() {
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(k)) follow.current = null;
       if (k === "e" && nearRef.current) void scan(nearRef.current);
       if (k === " " || k === "enter") {
-        if (edgeRef.current === "bottom" && nextZone && zoneIndex + 1 <= maxZoneRef.current) void changeZone(zoneIndex + 1);
-        else if (edgeRef.current === "bottom" && nextZone && allScannedRef.current) setCheckpointOpen(true);
-        else if (edgeRef.current === "top" && zoneIndex > 0) void changeZone(zoneIndex - 1);
+        const unlocked = nextZone && zoneIndex + 1 <= maxZoneRef.current;
+        if (edgeRef.current === "top" && zoneIndex > 0) void changeZone(zoneIndex - 1);
         else if (nearRef.current) void scan(nearRef.current);
+        else if (unlocked) void changeZone(zoneIndex + 1);
+        else if (nextZone && cpReadyRef.current) setCheckpointOpen(true);
       }
       if (k === "q") companion.current?.quiz();
       if (k === "m") companion.current?.toggleMic();
@@ -341,6 +343,21 @@ export default function Dive() {
         if (a.behavior === "hover") s.dir = s.goal;
         else if (s.vx > 6) s.dir = 1;
         else if (s.vx < -6) s.dir = -1;
+        // Solid bodies: the diver slides around a creature instead of passing through it.
+        if (a.behavior !== "floor" || s.w > 120) {
+          const rx = s.w * 0.42 + DIVER_W * 0.32, ry = s.w * 0.15 + 30;
+          const dx = b.x - s.x, dy = b.y - s.y;
+          const e = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+          if (e < 1) {
+            // Push out along the shortest way (mostly over or under, like swimming round it).
+            const k = e > 1e-4 ? 1 / Math.sqrt(e) : 1;
+            const tx = s.x + dx * k, ty = e > 1e-4 ? s.y + dy * k : s.y - ry;
+            b.x += (tx - b.x) * 0.25; b.y += (ty - b.y) * 0.25;
+            const nx = dx / rx, ny = dy / ry, nl = Math.hypot(nx, ny) || 1;
+            const into = (b.vx * nx + b.vy * ny) / nl;
+            if (into < 0) { b.vx -= (into * nx) / nl; b.vy -= (into * ny) / nl; } // cancel motion into the body
+          }
+        }
         const el = swimmerEls.current.get(s.id);
         if (el) {
           const onScreen = s.x + s.w > cam.x - 200 && s.x - s.w < cam.x + W + 200;
@@ -391,11 +408,11 @@ export default function Dive() {
 
   const xp = state.xp;
   const foundHere = zone.species.filter((s) => state.discovered.includes(s.id)).length;
-  const allScanned = foundHere === zone.species.length;
+  const cpReady = foundHere >= cpNeeded;
   const passedHere = Boolean(state.passedZones?.includes(zone.id));
   const nextUnlocked = nextZone && zoneIndex + 1 <= maxZone;
   // Unlock progress: scanning is 70% of the way, passing the checkpoint is the rest.
-  const unlockPct = !nextZone || passedHere ? 100 : Math.round((foundHere / zone.species.length) * 70);
+  const unlockPct = !nextZone || passedHere ? 100 : Math.round((Math.min(foundHere, cpNeeded) / cpNeeded) * 70);
 
   const want3d = (id: string) => webgl2 && (id === "diver" || Boolean(SPECIES_MODEL[id]));
   const hide2d = (id: string) => want3d(id) && (models3d[id] || !loadTimedOut);
@@ -414,7 +431,7 @@ export default function Dive() {
         <OceanBackdrop ref={ocean} zoneIndex={zoneIndex} diver={probe} camera={camera} />
         {webgl2 ? (
           <Ocean3D key={`${zone.id}-${view.w}x${view.h}`} zoneIndex={zoneIndex} view={view} worldW={worldW} camera={camera} body={body} swimmers={swimmers}
-            speciesIds={zone.species.map((s) => s.id)} onModelReady={onModelReady} suit={suitColor(state.diver.suitHue)} />
+            speciesIds={zone.species.map((s) => s.id)} onModelReady={onModelReady} gear={diverLook(state.diver)} />
         ) : (
           <div ref={farEl} className="parallax-far">
             <SeascapeStrip zoneIndex={zoneIndex} layer="far" tiles={Math.ceil(WORLD_SCREENS * FAR_PARALLAX) + 2} tileWidth={view.w} />
@@ -478,7 +495,7 @@ export default function Dive() {
         <div className="hud-depth"><span className="hud-kicker">DEPTH</span><span ref={depthEl} className="hud-depth-num">0 m</span></div>
         <div className="hud-xp">
           <div className="hud-xp-row">
-            <span className="hud-kicker">{!nextZone ? "DEEPEST ZONE" : passedHere ? `${nextZone.name.toUpperCase()} UNLOCKED` : allScanned ? "CHECKPOINT READY · SWIM TO THE BOTTOM" : `SCAN ALL ${zone.species.length} TO UNLOCK CHECKPOINT`}</span>
+            <span className="hud-kicker">{!nextZone ? "DEEPEST ZONE" : passedHere ? `${nextZone.name.toUpperCase()} UNLOCKED` : cpReady ? "CHECKPOINT READY · 3 QUESTIONS" : `SCAN ${cpNeeded - foundHere} MORE TO UNLOCK THE CHECKPOINT`}</span>
             <b>{xp} XP</b>
           </div>
           <div className="xp-bar"><span style={{ width: `${unlockPct}%` }} /></div>
@@ -494,13 +511,14 @@ export default function Dive() {
         ))}
       </ol>
 
-      {edge === "bottom" && nextZone && (
+      {/* Next-level prompt: always on screen once it's actionable, no need to swim to the bottom. */}
+      {nextZone && !cardId && !checkpointOpen && (nextUnlocked || cpReady || edge === "bottom") && (
         nextUnlocked ? (
           <button className="edge-prompt bottom" onClick={() => changeZone(zoneIndex + 1)}><ArrowDown size={16} /> Dive deeper into the {nextZone.name} <kbd>Space</kbd></button>
-        ) : allScanned ? (
-          <button className="edge-prompt bottom checkpoint-ready" onClick={() => setCheckpointOpen(true)}><ShieldCheck size={16} /> Take the {zone.name} checkpoint to unlock the {nextZone.name} <kbd>Space</kbd></button>
+        ) : cpReady ? (
+          <button className="edge-prompt bottom checkpoint-ready" onClick={() => setCheckpointOpen(true)}><ShieldCheck size={16} /> Checkpoint: 3 quick questions to unlock the {nextZone.name} <kbd>Space</kbd></button>
         ) : (
-          <button className="edge-prompt bottom locked" onClick={() => oceanAudio.sfx("lock")}><Lock size={14} /> Scan every creature here first ({foundHere}/{zone.species.length}), then pass the checkpoint</button>
+          <button className="edge-prompt bottom locked" onClick={() => oceanAudio.sfx("lock")}><Lock size={14} /> Scan {cpNeeded - foundHere} more creature{cpNeeded - foundHere === 1 ? "" : "s"} here to unlock the checkpoint</button>
         )
       )}
       {edge === "top" && zoneIndex > 0 && (

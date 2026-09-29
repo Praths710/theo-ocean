@@ -2,7 +2,7 @@ import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Clone, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
-import ModelActor from "./ModelActor";
+import ModelActor, { type GearLook } from "./ModelActor";
 import { MODEL_CONFIG, SPECIES_MODEL, type ModelId } from "./modelConfig";
 
 // The 3D layer of a dive. It is purely visual: gameplay (positions, input, scanning) stays in
@@ -221,7 +221,7 @@ function Animal({ speciesId, swimmers, onReady }: { speciesId: string; swimmers:
   );
 }
 
-function Diver3D({ body, onReady, suit, length }: { body: Ref<{ x: number; y: number; vx: number; vy: number; facing: 1 | -1 }>; onReady: () => void; suit?: string; length: number }) {
+function Diver3D({ body, onReady, look, length }: { body: Ref<{ x: number; y: number; vx: number; vy: number; facing: 1 | -1 }>; onReady: () => void; look?: GearLook; length: number }) {
   const group = useRef<THREE.Group>(null);
   const yaw = useRef<number | null>(null);
   const pitch = useRef(0);
@@ -244,21 +244,21 @@ function Diver3D({ body, onReady, suit, length }: { body: Ref<{ x: number; y: nu
     pitch.current += (p - pitch.current) * (1 - Math.exp(-4 * dt));
     const turning = Math.sin(yaw.current);
     const bob = Math.sin(t.current * 1.3) * 0.03 * (1 - effort.current); // floating at rest
-    group.current.position.set(b.x / U, -b.y / U + bob, 0.2 - Math.abs(turning) * 0.6);
+    group.current.position.set(b.x / U, -b.y / U + bob, 0.45 - Math.abs(turning) * 0.6); // just in front of the animals' plane
     // YXZ: turn first, then roll/pitch about the diver's own body axes (so leaning into a turn
     // never tips the head up or down).
     group.current.rotation.set(turning * 0.25, yaw.current, pitch.current + Math.sin(t.current * 0.9) * 0.03, "YXZ");
   });
   return (
     <group ref={group}>
-      <ModelActor id="diver" length={length} tempo={tempo} effort={effort} onReady={onReady} suit={suit} />
+      <ModelActor id="diver" length={length} tempo={tempo} effort={effort} onReady={onReady} look={look} />
     </group>
   );
 }
 
-export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmers, speciesIds, onModelReady, suit }: {
+export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmers, speciesIds, onModelReady, gear }: {
   zoneIndex: number;
-  suit?: string;
+  gear?: GearLook;
   view: { w: number; h: number };
   worldW: number;
   camera: Ref<{ x: number }>;
@@ -290,7 +290,7 @@ export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmer
       {speciesIds.filter((id) => SPECIES_MODEL[id]).map((id) => (
         <Suspense key={id} fallback={null}><Animal speciesId={id} swimmers={swimmers} onReady={onModelReady} /></Suspense>
       ))}
-      <Suspense fallback={null}><Diver3D body={body} onReady={() => onModelReady("diver")} suit={suit} length={Math.min(2.3, (view.w * 0.42) / U)} /></Suspense>
+      <Suspense fallback={null}><Diver3D body={body} onReady={() => onModelReady("diver")} look={gear} length={Math.min(2.3, (view.w * 0.42) / U)} /></Suspense>
     </Canvas>
   );
 }

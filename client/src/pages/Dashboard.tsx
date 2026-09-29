@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import { Award, Brain, Check, Fish, Gem, Info, Lock, LogOut, Play, RotateCcw, Shirt, Star, Target, Trophy, X } from "lucide-react";
+import { Award, Brain, Check, Fish, Gem, Info, Lock, LogOut, Play, RotateCcw, Shirt, Shuffle, Star, Target, Trophy, X } from "lucide-react";
 import Credits from "@/components/Credits";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { zones } from "@shared/ocean";
+import { DIVER_PRESETS, GEAR_SWATCHES, diverLook, zones, type DiverLook } from "@shared/ocean";
 import OceanBackdrop from "@/components/ocean/OceanBackdrop";
 import Seascape from "@/components/ocean/Seascape";
 import DiverStage from "@/three/DiverStage";
-import { suitColor } from "@/lib/suit";
 import Creature from "@/components/art/Creature";
 import { speciesArt } from "@/components/art/speciesArt";
 import { MOOD_COLORS } from "@/components/Companion";
@@ -15,10 +14,6 @@ import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { oceanAudio } from "@/lib/oceanAudio";
 
-const SUITS = [
-  { hue: 0, label: "Reef teal" }, { hue: 40, label: "Ocean blue" }, { hue: 90, label: "Violet" },
-  { hue: 150, label: "Coral" }, { hue: 200, label: "Sunset" }, { hue: 280, label: "Kelp" },
-];
 const RARITY: Record<string, { label: string; cls: string }> = {
   "Critically endangered": { label: "LEGENDARY", cls: "legendary" },
   Endangered: { label: "EPIC", cls: "epic" },
@@ -83,7 +78,7 @@ export default function Dashboard() {
       {/* ---------- top HUD ---------- */}
       <header className="base-top">
         <div className="player-badge">
-          <div className="player-portrait" style={{ ["--suit" as string]: suitColor(state.diver.suitHue) }}>{state.diver.name.slice(0, 1).toUpperCase()}</div>
+          <div className="player-portrait" style={{ ["--suit" as string]: diverLook(state.diver).suit }}>{state.diver.name.slice(0, 1).toUpperCase()}</div>
           <div className="player-info">
             <strong>{state.diver.name}</strong>
             <div className="lvl-row"><span className="lvl">LV {level}</span><div className="lvl-bar"><span style={{ width: `${levelPct}%` }} /></div></div>
@@ -134,7 +129,7 @@ export default function Dashboard() {
           <h1 className="stage-title">{zone.name}</h1>
           <div className="stage-diver">
             <div className="spotlight" />
-            <DiverStage className="stage-diver-3d" suit={suitColor(state.diver.suitHue)} />
+            <DiverStage className="stage-diver-3d" look={diverLook(state.diver)} />
             {[0, 1, 2, 3, 4].map((i) => <i key={i} className="stage-bubble" style={{ left: `${58 + i * 3}%`, animationDelay: `${i * 0.7}s` }} />)}
           </div>
           <div className="buddy-bubble" style={{ ["--mood" as string]: MOOD_COLORS.curious }}>
@@ -207,40 +202,74 @@ export default function Dashboard() {
   );
 }
 
+const GEAR_PARTS: { key: keyof DiverLook; label: string }[] = [
+  { key: "suit", label: "Wetsuit" }, { key: "panel", label: "Side panels" }, { key: "fins", label: "Fins" }, { key: "tank", label: "Tank" },
+];
+
 function Locker({ onClose }: { onClose: () => void }) {
   const { snap, apply } = useSession();
   const state = snap!.state;
   const [diverName, setDiverName] = useState(state.diver.name);
   const [buddyName, setBuddyName] = useState(state.diver.companionName);
-  const [suitHue, setSuitHue] = useState(state.diver.suitHue);
+  const [look, setLook] = useState<DiverLook>(() => diverLook(state.diver));
+  const [part, setPart] = useState<keyof DiverLook>("suit");
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  const preset = DIVER_PRESETS.find((p) => GEAR_PARTS.every(({ key }) => p.look[key] === look[key]));
   const save = async () => {
-    try { apply(await api.updateDiver({ name: diverName, companionName: buddyName, suitHue })); toast.success("Looking sharp!"); onClose(); } catch (e) { toast.error((e as Error).message); }
+    setSaving(true);
+    try { apply(await api.updateDiver({ name: diverName, companionName: buddyName, look })); toast.success("Looking sharp!"); onClose(); } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
+  };
+  const shuffle = () => {
+    const pick = () => GEAR_SWATCHES[Math.floor(Math.random() * GEAR_SWATCHES.length)];
+    setLook({ suit: pick(), panel: pick(), fins: pick(), tank: pick() });
   };
   return (
     <div className="profile-backdrop" role="presentation" onClick={onClose}>
       <article className="locker-modal" role="dialog" aria-modal="true" aria-labelledby="locker-title" onClick={(e) => e.stopPropagation()}>
         <button className="profile-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        <div className="locker-stage"><div className="spotlight" /><DiverStage className="stage-diver-3d" suit={suitColor(suitHue)} length={2.25} /></div>
+        <div className="locker-stage">
+          <div className="spotlight" />
+          <DiverStage className="stage-diver-3d" look={look} length={2.6} />
+          <p className="locker-outfit-name">{preset ? preset.name : "Custom outfit"}</p>
+        </div>
         <div className="locker-form">
           <h2 id="locker-title">Diver locker</h2>
-          <label className="field"><span>DIVER NAME</span><input value={diverName} maxLength={24} onChange={(e) => setDiverName(e.target.value)} /></label>
-          <label className="field"><span>BUDDY NAME</span><input value={buddyName} maxLength={24} onChange={(e) => setBuddyName(e.target.value)} /></label>
-          <div className="field"><span>WETSUIT</span>
-            <div className="suit-grid">
-              {SUITS.map((s) => (
-                <button key={s.hue} className={`suit ${suitHue === s.hue ? "active" : ""}`} onClick={() => setSuitHue(s.hue)} aria-pressed={suitHue === s.hue}>
-                  <i style={{ background: suitColor(s.hue) }} />{s.label}
+          <div className="locker-names">
+            <label className="field"><span>DIVER NAME</span><input value={diverName} maxLength={24} onChange={(e) => setDiverName(e.target.value)} /></label>
+            <label className="field"><span>BUDDY NAME</span><input value={buddyName} maxLength={24} onChange={(e) => setBuddyName(e.target.value)} /></label>
+          </div>
+          <div className="field"><span>OUTFITS</span>
+            <div className="preset-grid">
+              {DIVER_PRESETS.map((p) => (
+                <button key={p.id} className={`preset ${preset?.id === p.id ? "active" : ""}`} onClick={() => setLook(p.look)} aria-pressed={preset?.id === p.id}>
+                  <span className="preset-chips">{GEAR_PARTS.map(({ key }) => <i key={key} style={{ background: p.look[key] }} />)}</span>
+                  {p.name}
                 </button>
               ))}
             </div>
           </div>
+          <div className="field"><span>CUSTOMIZE</span>
+            <div className="part-tabs" role="tablist">
+              {GEAR_PARTS.map(({ key, label }) => (
+                <button key={key} role="tab" aria-selected={part === key} className={part === key ? "active" : ""} onClick={() => setPart(key)}>
+                  <i style={{ background: look[key] }} />{label}
+                </button>
+              ))}
+            </div>
+            <div className="swatch-grid" role="radiogroup" aria-label={`${GEAR_PARTS.find((g) => g.key === part)!.label} colour`}>
+              {GEAR_SWATCHES.map((c) => (
+                <button key={c} role="radio" aria-checked={look[part] === c} aria-label={c} className={look[part] === c ? "active" : ""} style={{ background: c }} onClick={() => setLook((l) => ({ ...l, [part]: c }))} />
+              ))}
+            </div>
+          </div>
           <div className="custom-actions">
-            <button className="play-btn small" onClick={save}>SAVE</button>
+            <button className="play-btn small" onClick={save} disabled={saving}>{saving ? "SAVING…" : "SAVE"}</button>
+            <button className="reset-link" onClick={shuffle}><Shuffle size={12} /> Surprise me</button>
             <button className="reset-link" onClick={async () => { if (confirm("Reset all progress, XP and what your buddy has learned about you?")) { apply(await api.reset()); toast("Progress reset."); onClose(); } }}><RotateCcw size={12} /> Reset progress</button>
           </div>
         </div>
