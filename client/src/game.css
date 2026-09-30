@@ -350,3 +350,17 @@ kbd { display: inline-block; padding: 1px 6px; margin: 0 2px; border-radius: 5px
 .step-bar span.done { background: linear-gradient(90deg, #4fc3c9, #a7f1e5); box-shadow: 0 0 10px rgba(119, 223, 213, .55); }
 .step-bar span.cp { background: rgba(255, 209, 102, .2); }
 .step-bar span.cp.done { background: linear-gradient(90deg, #ffd166, #ffe7a8); box-shadow: 0 0 10px rgba(255, 209, 102, .55); }
+
+/* Checkpoint: the creature each question is about, in 3D beside the question */
+.checkpoint { width: min(860px, 100%); }
+.cp-stage { display: grid; grid-template-columns: 240px 1fr; gap: 22px; align-items: center; }
+.cp-specimen { position: relative; height: 220px; border-radius: 18px; overflow: hidden; background: radial-gradient(circle at 50% 45%, rgba(104, 222, 218, .22), transparent 62%), linear-gradient(160deg, #0b3b58, #041a2e); border: 1px solid rgba(147, 230, 224, .22); }
+.cp-3d { position: absolute !important; inset: 0; }
+.cp-2d { position: absolute; inset: 14%; display: grid; place-items: center; }
+.cp-thumb { flex: 0 0 64px; height: 44px; display: grid; place-items: center; }
+.species-card.got { cursor: pointer; transition: transform 180ms ease, box-shadow 180ms ease; }
+.species-card.got:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0, 0, 0, .35), 0 0 0 1px rgba(147, 230, 224, .4); }
+@media (max-width: 700px) {
+  .cp-stage { grid-template-columns: 1fr; }
+  .cp-specimen { height: 150px; }
+}

@@ -220,3 +220,6 @@
   .preset-grid { grid-template-columns: repeat(2, 1fr); }
   .locker-names { grid-template-columns: 1fr; }
 }
+
+/* 3D ocean behind the home and login screens */
+.backdrop-3d { position: absolute !important; inset: 0; z-index: 1; pointer-events: none; }

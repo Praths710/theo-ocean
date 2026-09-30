@@ -6,7 +6,7 @@ import { CHECKPOINT_QUESTIONS, diverLook, zones, type Species } from "@shared/oc
 import OceanBackdrop, { type DiverProbe, type OceanHandle } from "@/components/ocean/OceanBackdrop";
 import { SeascapeStrip } from "@/components/ocean/Seascape";
 import Ocean3D from "@/three/Ocean3D";
-import SpeciesViewer from "@/three/SpeciesViewer";
+import SpeciesCard from "@/components/SpeciesCard";
 import { useProgress } from "@react-three/drei";
 import { SPECIES_MODEL } from "@/three/modelConfig";
 import Diver from "@/components/art/Diver";
@@ -223,7 +223,6 @@ export default function Dive() {
         else if (unlocked) void changeZone(zoneIndex + 1);
         else if (nextZone && cpReadyRef.current) setCheckpointOpen(true);
       }
-      if (k === "q") companion.current?.quiz();
       if (k === "m") companion.current?.toggleMic();
       if (k === "escape") setCardId(null);
     };
@@ -541,7 +540,7 @@ export default function Dive() {
         <button className="edge-prompt top" onClick={() => changeZone(zoneIndex - 1)}><ArrowUp size={16} /> Swim up to the {zones[zoneIndex - 1].name} <kbd>Space</kbd></button>
       )}
 
-      <div className="controls-hint"><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> swim · hold mouse to steer · <kbd>E</kbd> scan · <kbd>Q</kbd> quiz · <kbd>M</kbd> talk</div>
+      <div className="controls-hint"><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd> swim · hold mouse to steer · <kbd>E</kbd> scan · <kbd>M</kbd> talk</div>
 
       {lineVisible && line.text && (
         <div className="subtitle" style={{ ["--mood" as string]: MOOD_COLORS[line.mood] ?? MOOD_COLORS.curious }} aria-live="polite">
@@ -569,7 +568,7 @@ export default function Dive() {
 
       {card && <SpeciesCard species={card} buddy={state.diver.companionName} onClose={() => setCardId(null)}
         onAsk={() => { setCardId(null); companion.current?.ask(`Tell me more about the ${card.name}! How does it survive down here?`); }}
-        onQuiz={() => { setCardId(null); companion.current?.quiz(card.id); }} />}
+ />}
       {loading3d && (
         <div className="dive-loading" role="status" aria-live="polite">
           <div className="dive-loading-card">
@@ -580,34 +579,5 @@ export default function Dive() {
         </div>
       )}
     </main>
-  );
-}
-
-function SpeciesCard({ species, buddy, onClose, onAsk, onQuiz }: { species: Species; buddy: string; onClose: () => void; onAsk: () => void; onQuiz: () => void }) {
-  const a = speciesArt[species.id];
-  return (
-    <div className="profile-backdrop" role="presentation" onClick={onClose}>
-      <article className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="sp-title" onClick={(e) => e.stopPropagation()}>
-        <button className="profile-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        <div className={`profile-art ${species.tone}`}><SpeciesViewer speciesId={species.id} className="profile-3d" fallback={<div className="profile-creature"><Creature art={a.art} /></div>} /><span className="art-grid" /></div>
-        <div className="profile-copy">
-          <div className="eyebrow"><span className="eyebrow-line" />SCAN COMPLETE · QUIZ MATERIAL</div>
-          <h2 id="sp-title">{species.name}</h2>
-          <p className="profile-scientific">{species.scientific}</p>
-          <span className="status-chip">{species.status}</span>
-          <p className="profile-details">{species.fact} {species.details}</p>
-          <div className="profile-facts">
-            <div><span>HABITAT</span><strong>{species.habitat}</strong></div>
-            <div><span>THREATS</span><strong>{species.threats}</strong></div>
-            <div><span>WHAT HELPS</span><strong>{species.action}</strong></div>
-          </div>
-          <div className="profile-buttons">
-            <button className="profile-action" onClick={onAsk}><MessageCircle size={15} /> Ask {buddy}</button>
-            <button className="profile-action" onClick={onQuiz}><Brain size={15} /> Quiz me on this</button>
-            <button className="profile-action ghost" onClick={onClose}>Keep swimming <ArrowUpRight size={16} /></button>
-          </div>
-        </div>
-      </article>
-    </div>
   );
 }

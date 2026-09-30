@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Award, Brain, Check, Fish, Gem, Info, Lock, LogOut, Play, RotateCcw, Shirt, Shuffle, Star, Target, Trophy, X } from "lucide-react";
 import Credits from "@/components/Credits";
+import SpeciesCard from "@/components/SpeciesCard";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { DIVER_PRESETS, GEAR_SWATCHES, diverLook, zones, type DiverLook } from "@shared/ocean";
 import OceanBackdrop from "@/components/ocean/OceanBackdrop";
-import Seascape from "@/components/ocean/Seascape";
+import Backdrop3D from "@/three/Backdrop3D";
+import { SPECIES_MODEL, type ModelId } from "@/three/modelConfig";
 import DiverStage from "@/three/DiverStage";
 import ModelThumb from "@/three/ModelThumb";
 import Creature from "@/components/art/Creature";
@@ -27,6 +29,7 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const [locker, setLocker] = useState(false);
   const [credits, setCredits] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
   const state = snap!.state;
   const maxZone = snap!.maxZoneIndex;
   const zoneIdx = Math.max(0, zones.findIndex((z) => z.id === state.zoneId));
@@ -40,7 +43,7 @@ export default function Dashboard() {
   const badges = [
     { id: "first", name: "First Contact", desc: "Scan your first species", icon: Fish, got: found >= 1 },
     { id: "reef", name: "Reef Friend", desc: "Scan every Sunlit Reef species", icon: Star, got: sunlitFound === zones[0].species.length },
-    { id: "quiz", name: "Quiz Whiz", desc: "Answer 5 quizzes right", icon: Brain, got: state.quiz.correct >= 5 },
+    { id: "quiz", name: "Quiz Whiz", desc: "Pass 2 zone checkpoints", icon: Brain, got: (state.passedZones?.length ?? 0) >= 2 },
     { id: "twilight", name: "Into the Dark", desc: "Unlock the Twilight Zone", icon: Target, got: maxZone >= 1 },
     { id: "midnight", name: "Midnight Voyager", desc: "Unlock the Midnight Zone", icon: Award, got: maxZone >= 2 },
     { id: "collector", name: "Collector", desc: "Scan 10 species", icon: Gem, got: found >= 10 },
@@ -50,7 +53,7 @@ export default function Dashboard() {
   const missions = [
     { name: "Scan your first creature", cur: Math.min(found, 1), max: 1, xp: 25 },
     { name: `Complete the Sunlit Reef logbook`, cur: sunlitFound, max: zones[0].species.length, xp: 100 },
-    { name: "Answer 5 quizzes correctly", cur: Math.min(state.quiz.correct, 5), max: 5, xp: 50 }, // labels = the XP those actions really earn
+    { name: "Pass 2 zone checkpoints", cur: Math.min(state.passedZones?.length ?? 0, 2), max: 2, xp: 200 }, // labels = the XP those actions really earn
     { name: `Pass the ${zones[maxZone].name} checkpoint`, cur: state.passedZones?.includes(zones[maxZone].id) ? 1 : 0, max: 1, xp: 100 },
     { name: "Scan 10 species", cur: Math.min(found, 10), max: 10, xp: 250 },
   ].filter((m) => m.cur < m.max).slice(0, 3);
@@ -72,7 +75,8 @@ export default function Dashboard() {
     <main className="base">
       <div className="base-bg" aria-hidden="true">
         <OceanBackdrop zoneIndex={zoneIdx} />
-        <Seascape zoneIndex={zoneIdx} />
+        <Backdrop3D className="backdrop-3d" zoneIndex={zoneIdx}
+          cruisers={zones[zoneIdx].species.filter((s) => SPECIES_MODEL[s.id]).slice(0, 2).map((s, i) => ({ id: SPECIES_MODEL[s.id] as ModelId, y: -2.2 - i * 1.6, z: -3 - i * 3, length: 1.6, speed: 0.9 + i * 0.3, phase: i * 0.7 }))} />
         <div className="base-shade" />
       </div>
 
@@ -88,7 +92,7 @@ export default function Dashboard() {
         <div className="currencies">
           <span className="coin xp" title="Total XP"><Gem size={15} /><b>{state.xp}</b></span>
           <span className="coin shells" title="Species collected"><Fish size={15} /><b>{found}/{allSpecies.length}</b></span>
-          <span className="coin stars" title="Quiz answers correct"><Star size={15} /><b>{state.quiz.correct}</b></span>
+          <span className="coin stars" title="Checkpoints passed"><Star size={15} /><b>{state.passedZones?.length ?? 0}</b></span>
           <span className="coin trophies" title="Badges"><Trophy size={15} /><b>{badges.filter((b) => b.got).length}</b></span>
         </div>
         <div className="top-buttons">
@@ -185,7 +189,7 @@ export default function Dashboard() {
             const got = state.discovered.includes(s.id);
             const rarity = RARITY[s.status] ?? { label: "COMMON", cls: "common" };
             return (
-              <article key={s.id} className={`species-card ${rarity.cls} ${got ? "got" : "mystery"}`}>
+              <article key={s.id} className={`species-card ${rarity.cls} ${got ? "got" : "mystery"}`} role={got ? "button" : undefined} tabIndex={got ? 0 : undefined} onClick={() => got && setViewing(s.id)} onKeyDown={(e) => got && e.key === "Enter" && setViewing(s.id)} aria-label={got ? `Open the ${s.name} card` : undefined}>
                 <span className="rarity">{got ? rarity.label : "???"}</span>
                 <div className="sc-art"><ModelThumb speciesId={s.id} className="thumb-img" alt={got ? s.name : ""} fallback={<Creature art={speciesArt[s.id].art} />} /></div>
                 <strong>{got ? s.name : "Undiscovered"}</strong>
@@ -199,6 +203,7 @@ export default function Dashboard() {
 
       {locker && <Locker onClose={() => setLocker(false)} />}
       {credits && <Credits onClose={() => setCredits(false)} />}
+      {viewing && (() => { const sp = allSpecies.find((x) => x.id === viewing); return sp ? <SpeciesCard species={sp} onClose={() => setViewing(null)} closeLabel="Back to base" /> : null; })()}
     </main>
   );
 }

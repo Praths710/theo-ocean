@@ -5,6 +5,7 @@ import * as THREE from "three";
 import ModelActor, { type GearLook } from "./ModelActor";
 import { KelpForest, Seagrass, sandHeight } from "./Flora";
 import { MarineSnow, SunShafts, SurfaceFromBelow } from "./Water";
+import DeepLife from "./DeepLife";
 import { MODEL_CONFIG, SPECIES_MODEL, type ModelId } from "./modelConfig";
 
 // The 3D layer of a dive. It is purely visual: gameplay (positions, input, scanning) stays in
@@ -17,13 +18,13 @@ type Ref<T> = { current: T };
 const FOV = 38;
 const U = 100; // px per world unit
 
-type ZoneLook = { fog: string; sky: string; ground: string; hemi: number; sun: number; sunColor: string; sand: string; caustic: number; lamp: number; density: number };
-const LOOKS: ZoneLook[] = [
+export type ZoneLook = { fog: string; sky: string; ground: string; hemi: number; sun: number; sunColor: string; sand: string; caustic: number; lamp: number; density: number };
+export const LOOKS: ZoneLook[] = [
   { fog: "#1e6d8f", sky: "#a9e4f5", ground: "#0b3a52", hemi: 0.85, sun: 1.25, sunColor: "#fff3d6", sand: "#7d7358", caustic: 0.55, lamp: 0, density: 0.035 },
   { fog: "#0b3350", sky: "#7fb8e0", ground: "#061c2e", hemi: 0.5, sun: 0.55, sunColor: "#a8d4ff", sand: "#5e5c52", caustic: 0.25, lamp: 0.6, density: 0.05 },
-  { fog: "#03121f", sky: "#335a78", ground: "#020a12", hemi: 0.14, sun: 0.1, sunColor: "#6f9cc4", sand: "#34332f", caustic: 0, lamp: 1, density: 0.07 },
-  { fog: "#020a13", sky: "#23384a", ground: "#010508", hemi: 0.08, sun: 0.04, sunColor: "#5d7a94", sand: "#2a2926", caustic: 0, lamp: 1, density: 0.08 },
-  { fog: "#01060c", sky: "#1b2b38", ground: "#000305", hemi: 0.06, sun: 0.02, sunColor: "#4c6275", sand: "#1d1c1a", caustic: 0, lamp: 1, density: 0.09 },
+  { fog: "#03121f", sky: "#335a78", ground: "#020a12", hemi: 0.2, sun: 0.1, sunColor: "#6f9cc4", sand: "#3d3b35", caustic: 0, lamp: 1, density: 0.07 },
+  { fog: "#020a13", sky: "#23384a", ground: "#010508", hemi: 0.17, sun: 0.05, sunColor: "#5d7a94", sand: "#3a3833", caustic: 0, lamp: 1, density: 0.08 },
+  { fog: "#01060c", sky: "#1b2b38", ground: "#000305", hemi: 0.14, sun: 0.04, sunColor: "#4c6275", sand: "#302e2a", caustic: 0, lamp: 1, density: 0.09 },
 ];
 
 const rng = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -41,7 +42,7 @@ function Rig({ view, camera: cam }: { view: { w: number; h: number }; camera: Re
   return null;
 }
 
-function Lights({ look, body }: { look: ZoneLook; body: Ref<{ x: number; y: number; facing: 1 | -1 }> }) {
+export function Lights({ look, body }: { look: ZoneLook; body: Ref<{ x: number; y: number; facing: 1 | -1 }> }) {
   const spot = useRef<THREE.SpotLight>(null);
   const target = useMemo(() => new THREE.Object3D(), []);
   const halo = useRef<THREE.PointLight>(null);
@@ -66,7 +67,7 @@ function Lights({ look, body }: { look: ZoneLook; body: Ref<{ x: number; y: numb
 }
 
 /** Rolling sand/sediment seafloor with animated caustic light in the sunlit zones. */
-function Seafloor({ worldW, floorY, look }: { worldW: number; floorY: number; look: ZoneLook }) {
+export function Seafloor({ worldW, floorY, look }: { worldW: number; floorY: number; look: ZoneLook }) {
   const mat = useRef<THREE.MeshStandardMaterial>(null);
   const uniforms = useMemo(() => ({ uTime: { value: 0 }, uCaustic: { value: look.caustic } }), [look.caustic]);
   const geo = useMemo(() => {
@@ -113,7 +114,7 @@ totalEmissiveRadiance += vec3(0.55, 0.9, 1.0) * cst(vWorldP.xz * 1.6, uTime * 0.
 }
 
 /** Scattered rock outcrops (all zones) and coral heads (sunlit reef). */
-function Scenery({ zoneIndex, worldW, floorY }: { zoneIndex: number; worldW: number; floorY: number }) {
+export function Scenery({ zoneIndex, worldW, floorY }: { zoneIndex: number; worldW: number; floorY: number }) {
   const rocks = useGLTF(MODEL_CONFIG.rocks.file, false, true);
   const coral = useGLTF(MODEL_CONFIG["coral-reef"].file, false, true);
   const placements = useMemo(() => {
@@ -250,6 +251,7 @@ export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmer
       <Seafloor worldW={W} floorY={floorY} look={look} />
       <KelpForest zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
       <Seagrass zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
+      <DeepLife zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
       {zoneIndex === 0 && <SurfaceFromBelow worldW={W} />}
       <SunShafts zoneIndex={zoneIndex} worldW={W} floorY={floorY} />
       <MarineSnow zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />

@@ -152,8 +152,7 @@ function scatter(mesh: THREE.InstancedMesh | null, count: number, place: (i: num
 }
 
 const KELP = [
-  { count: 64, glow: 0.42, tint: "#ffffff" },
-  { count: 14, glow: 0.12, tint: "#6f8a9a" },
+  { count: 64, glow: 0.42, tint: "#ffffff" }, // sunlit only: kelp needs sunlight (DeepLife covers the deep)
 ];
 
 export function KelpForest({ zoneIndex, worldW, floorY, lite }: { zoneIndex: number; worldW: number; floorY: number; lite: boolean }) {
@@ -179,8 +178,7 @@ export function KelpForest({ zoneIndex, worldW, floorY, lite }: { zoneIndex: num
 }
 
 const GRASS = [
-  { count: 2600, glow: 0.18, hue: [0.2, 0.28], light: [0.2, 0.36] },
-  { count: 700, glow: 0.05, hue: [0.3, 0.38], light: [0.1, 0.18] },
+  { count: 2600, glow: 0.18, hue: [0.2, 0.28], light: [0.2, 0.36] }, // sunlit only, like the kelp
 ];
 
 export function Seagrass({ zoneIndex, worldW, floorY, lite }: { zoneIndex: number; worldW: number; floorY: number; lite: boolean }) {

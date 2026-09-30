@@ -96,11 +96,12 @@ vec3 rigKick(vec3 a) {
   float wArm = smoothstep(shoulderZ, shoulderZ + 0.08 * L, abs(a.z)) * armSel;
   float wFore = smoothstep(0.27 * L, 0.35 * L, abs(a.z)) * armSel;
   float armBeat = beat * side * -1.0;                     // each arm drifts against its own leg
-  // Elbow: a soft, relaxed bend (hands curl in towards the thighs), breathing slightly with the stroke.
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.31 * L), side * wFore * (0.38 + 0.06 * armBeat));
-  // Shoulder: lowered a little, swung back along the body, easing forward and back with the rhythm.
-  p.yz = rot2(p.yz, vec2(0.05 * L, side * shoulderZ), side * wArm * (0.38 + 0.05 * armBeat));
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), side * wArm * (1.42 + 0.07 * armBeat));
+  // Arms, as scuba divers hold them: elbows bent, forearms folded in front, hands together under the
+  // chest. Built from the T-pose in rest positions: elbow first, then the shoulder swings the arm
+  // a little forward and lowers it under the body. A gentle drift keeps them alive on the kick rhythm.
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.31 * L), -side * wFore * (1.28 + 0.06 * armBeat));
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), -side * wArm * (0.3 + 0.04 * armBeat));
+  p.yz = rot2(p.yz, vec2(0.05 * L, side * shoulderZ), side * wArm * (0.5 + 0.03 * armBeat));
   // Head: raised to look ahead.
   float head = smoothstep(0.33, 0.37, s) * (1.0 - smoothstep(0.11, 0.15, a.y / L)) * (1.0 - wArm);
   p.xy = rot2(p.xy, vec2(0.345, 0.05) * L, head * 0.55);

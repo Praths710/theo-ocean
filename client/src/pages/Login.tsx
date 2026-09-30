@@ -2,10 +2,7 @@ import { useState } from "react";
 import { ArrowRight, Waves } from "lucide-react";
 import { useLocation } from "wouter";
 import OceanBackdrop from "@/components/ocean/OceanBackdrop";
-import Seascape from "@/components/ocean/Seascape";
-import Diver from "@/components/art/Diver";
-import Creature from "@/components/art/Creature";
-import { speciesArt } from "@/components/art/speciesArt";
+import Backdrop3D from "@/three/Backdrop3D";
 import { useSession } from "@/lib/session";
 
 export default function Login() {
@@ -34,12 +31,11 @@ export default function Login() {
   return (
     <main className="login-page">
       <OceanBackdrop zoneIndex={0} />
-      <Seascape zoneIndex={0} />
-      <div className="login-life" aria-hidden="true">
-        <div className="drift drift-whale"><Creature art={speciesArt.whale.art} /></div>
-        <div className="drift drift-turtle"><Creature art={speciesArt.hawksbill.art} /></div>
-        <div className="drift drift-diver"><Diver kick={1.1} /></div>
-      </div>
+      <Backdrop3D className="backdrop-3d" zoneIndex={0} cruisers={[
+        { id: "whale", y: -2.0, z: -9, length: 4.5, speed: 0.7, phase: 0.2 },
+        { id: "hawksbill", y: -4.6, z: -2.5, length: 1.3, speed: 1.1, phase: 1.3 },
+        { id: "diver", y: -3.2, z: -1.2, length: 2, speed: 1.3, phase: 0.6 },
+      ]} />
 
       <section className="login-card" aria-labelledby="login-title">
         <div className="brand login-brand"><span className="brand-mark"><Waves size={17} strokeWidth={2.5} /></span><span>TheO</span></div>

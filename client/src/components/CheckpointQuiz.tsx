@@ -3,6 +3,10 @@ import { ArrowDown, Check, RotateCcw, ShieldCheck, X } from "lucide-react";
 import { findZone, zones, type Checkpoint, type CheckpointResult } from "@shared/ocean";
 import { api, type PlayerSnapshot } from "@/lib/api";
 import { oceanAudio } from "@/lib/oceanAudio";
+import Creature from "@/components/art/Creature";
+import { speciesArt } from "@/components/art/speciesArt";
+import SpeciesViewer from "@/three/SpeciesViewer";
+import ModelThumb from "@/three/ModelThumb";
 
 type Props = {
   onClose: () => void;
@@ -77,13 +81,21 @@ export default function CheckpointQuiz({ onClose, onSnapshot, onDiveDeeper, onRe
               {cp.questions.map((_, i) => <i key={i} className={i < answers.length ? "done" : i === step ? "now" : ""} />)}
               <span>Question {Math.min(step + 1, cp.questions.length)} of {cp.questions.length} · need {cp.passMark} right</span>
             </div>
-            <p className="cp-question">{cp.questions[step].question}</p>
-            <div className="cp-options">
-              {cp.questions[step].options.map((o, i) => (
-                <button key={`${step}-${i}`} className={`cp-option ${answers[step] === i ? "picked" : ""}`} disabled={busy} onClick={() => pick(i)}>
-                  <b>{"ABCD"[i]}</b><span>{o}</span>
-                </button>
-              ))}
+            <div className="cp-stage">
+              <div className="cp-specimen" aria-hidden="true">
+                <SpeciesViewer key={cp.questions[step].speciesId} speciesId={cp.questions[step].speciesId} className="cp-3d"
+                  fallback={<div className="cp-2d"><Creature art={speciesArt[cp.questions[step].speciesId].art} /></div>} />
+              </div>
+              <div>
+                <p className="cp-question">{cp.questions[step].question}</p>
+                <div className="cp-options">
+                  {cp.questions[step].options.map((o, i) => (
+                    <button key={`${step}-${i}`} className={`cp-option ${answers[step] === i ? "picked" : ""}`} disabled={busy} onClick={() => pick(i)}>
+                      <b>{"ABCD"[i]}</b><span>{o}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -98,6 +110,7 @@ export default function CheckpointQuiz({ onClose, onSnapshot, onDiveDeeper, onRe
               {cp.questions.map((q, i) => (
                 <li key={i} className={result.results[i].correct ? "right" : "wrong"}>
                   <span className="cp-mark">{result.results[i].correct ? <Check size={14} /> : <X size={14} />}</span>
+                  <span className="cp-thumb"><ModelThumb speciesId={q.speciesId} className="thumb-img" fallback={<Creature art={speciesArt[q.speciesId].art} />} /></span>
                   <div>
                     <p>{q.question}</p>
                     {!result.results[i].correct && <p className="cp-answer">Answer: {q.options[result.results[i].correctIndex]}</p>}

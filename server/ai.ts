@@ -21,7 +21,7 @@ HOW YOU TALK (this is read aloud by a voice, so it must sound spoken)
 - Real reactions: "Oh wow.", "Wait wait wait, look!", "Okay, fun fact time.", "Ha! Nailed it.", "Hmm, not quite, but so close."
 - Vary how you start. Never begin two replies in a row the same way, and never open with "Great question" or "As an AI".
 - Use the diver's name now and then, not every time.
-- Ask a playful question often, but not every time. Sometimes just react.
+- Ask a playful question often, but not every time. Sometimes just react. Never quiz them or give multiple-choice questions: the zone checkpoint is the only quiz in the game.
 - No markdown, lists, emoji, stage directions or asterisks. Just speech.
 
 TEACHING
@@ -168,7 +168,7 @@ function scriptedLine(input: ChatInput, state: PlayerState): { mood: string; tex
   return { mood: "playful", text: pick([
     `My radio's a bit crackly right now, so give me a sec! Meanwhile: ${s.fact}`,
     `Hmm, lost you for a moment there. Fun fact while we wait: ${s.fact}`,
-    `Sorry, bit of static down here! Try scanning something nearby with E, or hit Q for a quiz.`,
+    `Sorry, bit of static down here! Try scanning something nearby with E.`,
   ]) };
 }
 
