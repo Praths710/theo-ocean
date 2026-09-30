@@ -7,6 +7,7 @@ import DeepLife from "./DeepLife";
 import { MarineSnow, SunShafts, SurfaceFromBelow } from "./Water";
 import { LOOKS, Lights, Scenery, Seafloor } from "./Ocean3D";
 import type { ModelId } from "./modelConfig";
+import UnderwaterEnv from "./UnderwaterEnv";
 
 // The same 3D ocean as the dive, as a living background for the home screen and the login page:
 // the zone's seafloor, plants, light and particles, seen by a camera that drifts slowly sideways,
@@ -64,6 +65,7 @@ export default function Backdrop3D({ zoneIndex, className, cruisers = [] }: { zo
       <fog attach="fog" args={[look.fog, dist * 0.75, dist * (2.4 - zoneIndex * 0.22)]} />
       <DriftingCamera />
       <Lights look={look} body={lamp} />
+      <UnderwaterEnv intensity={[0.5, 0.28, 0.14, 0.1, 0.08][zoneIndex] ?? 0.1} />
       <Seafloor worldW={WORLD_W} floorY={floorY} look={look} />
       <KelpForest zoneIndex={zoneIndex} worldW={WORLD_W} floorY={floorY} lite={lite} />
       <Seagrass zoneIndex={zoneIndex} worldW={WORLD_W} floorY={floorY} lite={lite} />

@@ -6,6 +6,7 @@ import ModelActor, { type GearLook } from "./ModelActor";
 import { KelpForest, Seagrass, sandHeight } from "./Flora";
 import { MarineSnow, SunShafts, SurfaceFromBelow } from "./Water";
 import DeepLife from "./DeepLife";
+import UnderwaterEnv from "./UnderwaterEnv";
 import { MODEL_CONFIG, SPECIES_MODEL, type ModelId } from "./modelConfig";
 
 // The 3D layer of a dive. It is purely visual: gameplay (positions, input, scanning) stays in
@@ -248,6 +249,7 @@ export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmer
       <fog attach="fog" args={[look.fog, dist * 0.75, dist * (2.4 - zoneIndex * 0.22)]} />
       <Rig view={view} camera={camera} />
       <Lights look={look} body={body} />
+      <UnderwaterEnv intensity={[0.5, 0.28, 0.14, 0.1, 0.08][zoneIndex] ?? 0.1} />
       <Seafloor worldW={W} floorY={floorY} look={look} />
       <KelpForest zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
       <Seagrass zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />

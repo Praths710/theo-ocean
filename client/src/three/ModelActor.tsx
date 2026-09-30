@@ -84,10 +84,10 @@ vec3 rigKick(vec3 a) {
   p.xy = rot2(p.xy, vec2(-0.445, 0.04) * L, wa * (-1.3 + leg * amp * 0.26 * sin(ph - 1.5)));
   // Knees: a soft bend that deepens slightly on the up-stroke.
   float wk = smoothstep(-0.21, -0.31, s);
-  p.xy = rot2(p.xy, vec2(-0.26, 0.05) * L, -wk * leg * (0.1 + amp * 0.14 * (0.5 + 0.5 * sin(ph - 0.9))));
+  p.xy = rot2(p.xy, vec2(-0.26, 0.05) * L, -wk * leg * (0.14 + amp * 0.22 * (0.5 + 0.5 * sin(ph - 0.9))));
   // Hips: the stroke itself, long and even.
   float wh = smoothstep(-0.02, -0.16, s);
-  p.xy = rot2(p.xy, vec2(-0.08, 0.04) * L, wh * leg * amp * 0.2 * sin(ph));
+  p.xy = rot2(p.xy, vec2(-0.08, 0.04) * L, wh * leg * amp * 0.27 * sin(ph));
   // Upper body flows with the same rhythm as the legs (never faster), so the whole diver moves as one:
   // relaxed arms with a soft elbow, drifting a little against each kick; the torso rolls gently.
   float beat = sin(uTime * uSpeed);                       // left-leg stroke; right leg is the opposite
@@ -96,12 +96,13 @@ vec3 rigKick(vec3 a) {
   float wArm = smoothstep(shoulderZ, shoulderZ + 0.08 * L, abs(a.z)) * armSel;
   float wFore = smoothstep(0.27 * L, 0.35 * L, abs(a.z)) * armSel;
   float armBeat = beat * side * -1.0;                     // each arm drifts against its own leg
-  // Arms, as scuba divers hold them: elbows bent, forearms folded in front, hands together under the
-  // chest. Built from the T-pose in rest positions: elbow first, then the shoulder swings the arm
-  // a little forward and lowers it under the body. A gentle drift keeps them alive on the kick rhythm.
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.31 * L), -side * wFore * (1.28 + 0.06 * armBeat));
-  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), -side * wArm * (0.3 + 0.04 * armBeat));
-  p.yz = rot2(p.yz, vec2(0.05 * L, side * shoulderZ), side * wArm * (0.5 + 0.03 * armBeat));
+  // Arms, as in a relaxed recreational diver: resting back along the body, the upper arm angled a
+  // little below the torso, elbow softly bent, forearm and hand lying along the thigh. Built from
+  // the T-pose in rest positions (elbow first), drifting gently with the kick rhythm.
+  p.yz = rot2(p.yz, vec2(0.05 * L, side * 0.31 * L), -side * wFore * (0.5 + 0.04 * armBeat));
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * 0.31 * L), side * wFore * 0.3);
+  p.yz = rot2(p.yz, vec2(0.05 * L, side * shoulderZ), side * wArm * (0.3 + 0.04 * armBeat));
+  p.xz = rot2(p.xz, vec2(0.3 * L, side * shoulderZ), side * wArm * (1.5 + 0.05 * armBeat));
   // Head: raised to look ahead.
   float head = smoothstep(0.33, 0.37, s) * (1.0 - smoothstep(0.11, 0.15, a.y / L)) * (1.0 - wArm);
   p.xy = rot2(p.xy, vec2(0.345, 0.05) * L, head * 0.55);
@@ -200,7 +201,17 @@ export default function ModelActor({ id, length, children, onReady, tempo, look,
       m.userData.origMaterial ??= m.material; // always derive from the original, so re-runs never stack tints
       const orig = m.userData.origMaterial as THREE.Material | THREE.Material[];
       const mats = (Array.isArray(orig) ? orig : [orig]).map((mat) => {
-        const c2 = mat.clone() as THREE.MeshStandardMaterial;
+        let c2 = mat.clone() as THREE.MeshStandardMaterial;
+        if (id === "diver" && (mat.name === "Diver_Body" || mat.name === "Diver_Objects")) {
+          // Wet neoprene and a painted steel tank: a clear-coat layer gives the glossy highlights.
+          const phys = new THREE.MeshPhysicalMaterial();
+          THREE.MeshStandardMaterial.prototype.copy.call(phys, c2);
+          phys.defines = { STANDARD: "", PHYSICAL: "" };
+          phys.clearcoat = mat.name === "Diver_Body" ? 0.75 : 0.9;
+          phys.clearcoatRoughness = mat.name === "Diver_Body" ? 0.28 : 0.15;
+          phys.roughness = Math.min(phys.roughness, mat.name === "Diver_Body" ? 0.6 : 0.4);
+          c2 = phys;
+        }
         if (cfg.tint && "color" in c2) c2.color.multiply(new THREE.Color(cfg.tint));
         if (cfg.emissive && "emissive" in c2) { c2.emissive = new THREE.Color(cfg.emissive); c2.emissiveIntensity = cfg.emissiveIntensity ?? 0.6; }
         if ("roughness" in c2 && cfg.wet) c2.roughness = Math.min(c2.roughness, 0.45);

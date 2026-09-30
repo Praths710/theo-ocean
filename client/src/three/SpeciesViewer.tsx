@@ -2,6 +2,7 @@ import { Suspense, useRef, type ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import ModelActor from "./ModelActor";
+import UnderwaterEnv from "./UnderwaterEnv";
 import { SPECIES_MODEL, type ModelId } from "./modelConfig";
 
 // The species card's specimen: the same animated 3D model as in the dive, turning slowly so you
@@ -34,6 +35,7 @@ export default function SpeciesViewer({ speciesId, fallback, className }: { spec
     <Canvas className={className} dpr={[1, 2]} camera={{ position: [0, 0.3, 5.4], fov: 36 }} gl={{ alpha: true, antialias: true }}
       onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.2; }}>
       <hemisphereLight args={["#cdf6ff", "#0b2a3a", 1.2]} />
+      <UnderwaterEnv intensity={0.55} />
       <directionalLight position={[3, 5, 4]} intensity={2.4} color="#fff4e0" />
       <directionalLight position={[-4, 1, -3]} intensity={1.3} color="#62e0ff" />
       <Suspense fallback={null}><Specimen id={id} /></Suspense>
