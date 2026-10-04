@@ -215,6 +215,7 @@ export default function ModelActor({ id, length, children, onReady, tempo, look,
         if (cfg.tint && "color" in c2) c2.color.multiply(new THREE.Color(cfg.tint));
         if (cfg.emissive && "emissive" in c2) { c2.emissive = new THREE.Color(cfg.emissive); c2.emissiveIntensity = cfg.emissiveIntensity ?? 0.6; }
         if ("roughness" in c2 && cfg.wet) c2.roughness = Math.min(c2.roughness, 0.45);
+        if (cfg.solid) { c2.transparent = false; c2.opacity = 1; c2.depthWrite = true; c2.alphaTest = 0; }
         const gear = id !== "diver" ? undefined
           : mat.name === "Diver_Body" ? { u: gearU, glsl: BODY_GLSL, key: "diver-body" }
           : mat.name === "Diver_Objects" ? { u: gearU, glsl: TANK_GLSL, key: "diver-gear" } : undefined;
