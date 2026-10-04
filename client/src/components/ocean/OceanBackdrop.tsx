@@ -81,9 +81,20 @@ void main(){
   gl_FragColor = vec4(col, 1.0);
 }`;
 
+const css = (c: number[]) => `rgb(${c.map((v) => Math.round(v * 255)).join(",")})`;
+/** The zone's water as a simple top-to-bottom gradient (used behind the 3D scene). */
+export function gradientFor(zoneIndex: number) {
+  const p = ZONE_PALETTES[zoneIndex] ?? ZONE_PALETTES[0];
+  return `linear-gradient(180deg, ${css(p.top)} 0%, ${css(p.top.map((v, i) => (v + p.bottom[i]) / 2))} 55%, ${css(p.bottom)} 100%)`;
+}
+
 type Particle = { x: number; y: number; vx: number; vy: number; r: number; a: number; kind: 0 | 1 | 2; life: number; seed: number };
 
-export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className }: { ref?: Ref<OceanHandle>; zoneIndex: number; diver?: { current: DiverProbe }; camera?: { current: { x: number } }; className?: string }) {
+/**
+ * `waterless`: the 3D scene already draws the water, light and particles, so only keep the bubbles
+ * and use a plain gradient behind (saves a full-screen shader and a full-screen 2D canvas a frame).
+ */
+export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className, waterless = false }: { ref?: Ref<OceanHandle>; zoneIndex: number; diver?: { current: DiverProbe }; camera?: { current: { x: number } }; className?: string; waterless?: boolean }) {
   const glRef = useRef<HTMLCanvasElement>(null);
   const fxRef = useRef<HTMLCanvasElement>(null);
   const target = useRef(ZONE_PALETTES[zoneIndex] ?? ZONE_PALETTES[0]);
@@ -100,7 +111,7 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
   }));
 
   useEffect(() => {
-    const gl = glRef.current!.getContext("webgl", { antialias: false, premultipliedAlpha: false });
+    const gl = waterless ? null : glRef.current!.getContext("webgl", { antialias: false, premultipliedAlpha: false });
     const fx = fxRef.current!.getContext("2d")!;
     let prog: WebGLProgram | null = null;
     const u: Record<string, WebGLUniformLocation | null> = {};
@@ -125,13 +136,14 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
     const snow: Particle[] = Array.from({ length: 140 }, () => ({ x: 0, y: 0, vx: 0, vy: 4 + Math.random() * 8, r: 0.5 + Math.random() * 1.6, a: 0.15 + Math.random() * 0.4, kind: 0, life: 0, seed: Math.random() * 100 }));
     const bio: Particle[] = Array.from({ length: 70 }, () => ({ x: 0, y: 0, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, r: 1 + Math.random() * 1.8, a: 0, kind: 1, life: 0, seed: Math.random() * 100 }));
     let seeded = false;
+    let drewLast = false;
     let bubbles: Particle[] = [];
     const resize = () => {
       const el = glRef.current!.parentElement!;
       W = el.clientWidth; H = el.clientHeight;
       const s = Math.min(window.devicePixelRatio, 1) * (W < 900 ? 0.5 : 0.75); // shader at reduced res (it is soft); lighter on phones
       glRef.current!.width = Math.max(1, Math.floor(W * s)); glRef.current!.height = Math.max(1, Math.floor(H * s));
-      const d = Math.min(window.devicePixelRatio, 2);
+      const d = waterless ? 1 : Math.min(window.devicePixelRatio, 2);
       fxRef.current!.width = W * d; fxRef.current!.height = H * d;
       fx.setTransform(d, 0, 0, d, 0, 0);
       // Scatter particles once we know the real size (it can be 0 at first layout, e.g. on mobile).
@@ -166,7 +178,9 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
 
-      fx.clearRect(0, 0, W, H);
+      // Waterless mode only has bubbles: skip the full-canvas clear when nothing was drawn.
+      if (!waterless || bubbles.length || bubbleQueue.current.length || drewLast) fx.clearRect(0, 0, W, H);
+      drewLast = bubbles.length > 0;
       if (!seeded) { raf = requestAnimationFrame(frame); return; }
       // Particles scroll with the camera at a slower rate than the world (depth parallax).
       const cam = camera?.current.x ?? 0;
@@ -174,7 +188,7 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
       const wrapX = (x: number, f: number) => ((((x - cam * f) % span) + span) % span) - 10;
       // marine snow
       const lamp = Math.max(0, 1 - cur.light * 1.6);
-      for (const p of snow) {
+      for (const p of waterless ? [] : snow) {
         p.y += p.vy * dt; p.x += Math.sin(t * 0.5 + p.seed) * 6 * dt;
         if (p.y > H + 4) { p.y = -4; p.x = Math.random() * W; }
         const sx = wrapX(p.x, 0.25 + (p.r / 2.1) * 0.5);
@@ -184,7 +198,7 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
         fx.beginPath(); fx.arc(sx, p.y, p.r, 0, Math.PI * 2); fx.fill();
       }
       // bioluminescent plankton: twinkle, flare up when the diver swims past
-      if (cur.bio > 0.02) {
+      if (cur.bio > 0.02 && !waterless) {
         for (const p of bio) {
           p.x += (p.vx + Math.sin(t * 0.3 + p.seed) * 4) * dt; p.y += (p.vy + Math.cos(t * 0.27 + p.seed) * 3) * dt;
           if (p.y < -10) p.y = H + 10; if (p.y > H + 10) p.y = -10;
@@ -219,10 +233,10 @@ export default function OceanBackdrop({ ref, zoneIndex, diver, camera, className
     };
     raf = requestAnimationFrame(frame);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, [diver, camera]);
+  }, [diver, camera, waterless]);
 
   return (
-    <div className={`ocean-backdrop ${className ?? ""}`}>
+    <div className={`ocean-backdrop ${className ?? ""}`} style={waterless ? { background: gradientFor(zoneIndex) } : undefined}>
       <canvas ref={glRef} className="ocean-gl" />
       <canvas ref={fxRef} className="ocean-fx" />
     </div>

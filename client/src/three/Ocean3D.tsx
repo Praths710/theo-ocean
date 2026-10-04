@@ -1,12 +1,13 @@
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { Clone, useGLTF } from "@react-three/drei";
+import { PerformanceMonitor, useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import ModelActor, { type GearLook } from "./ModelActor";
 import { KelpForest, Seagrass, sandHeight } from "./Flora";
 import { MarineSnow, SunShafts, SurfaceFromBelow } from "./Water";
 import DeepLife from "./DeepLife";
 import UnderwaterEnv from "./UnderwaterEnv";
+import { isIntegratedGpu } from "./gpu";
 import { MODEL_CONFIG, SPECIES_MODEL, type ModelId } from "./modelConfig";
 
 // The 3D layer of a dive. It is purely visual: gameplay (positions, input, scanning) stays in
@@ -17,6 +18,8 @@ export type Swimmer3D = { id: string; x: number; y: number; vx: number; vy: numb
 type Ref<T> = { current: T };
 
 const FOV = 38;
+// Performance probe: ?off=kelp,grass,... switches parts of the scene off to measure their cost.
+const OFF = new Set((typeof location !== "undefined" ? new URLSearchParams(location.search).get("off") ?? "" : "").split(",").filter(Boolean));
 const U = 100; // px per world unit
 
 export type ZoneLook = { fog: string; sky: string; ground: string; hemi: number; sun: number; sunColor: string; sand: string; caustic: number; lamp: number; density: number };
@@ -72,7 +75,7 @@ export function Seafloor({ worldW, floorY, look }: { worldW: number; floorY: num
   const mat = useRef<THREE.MeshStandardMaterial>(null);
   const uniforms = useMemo(() => ({ uTime: { value: 0 }, uCaustic: { value: look.caustic } }), [look.caustic]);
   const geo = useMemo(() => {
-    const g = new THREE.PlaneGeometry(worldW + 40, 44, Math.min(600, Math.round(worldW * 4)), 70);
+    const g = new THREE.PlaneGeometry(worldW + 40, 44, Math.min(260, Math.round(worldW * 2.2)), 40);
     g.rotateX(-Math.PI / 2);
     const p = g.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < p.count; i++) {
@@ -94,8 +97,8 @@ export function Seafloor({ worldW, floorY, look }: { worldW: number; floorY: num
         .replace("#include <common>", `#include <common>
 varying vec3 vWorldP; uniform float uTime; uniform float uCaustic;
 float cst(vec2 p, float t){ vec2 i = p; float c = 0.0;
-  for (int n = 0; n < 3; n++) { float tt = t * (1.0 - 0.6/float(n+1)); i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x)); c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / 0.01), p.y / (cos(i.y + tt) / 0.01))); }
-  c = 1.2 - pow(c / 3.0, 1.35); return clamp(pow(abs(c), 7.0), 0.0, 1.5); }`)
+  for (int n = 0; n < 2; n++) { float tt = t * (1.0 - 0.6/float(n+1)); i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x)); c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / 0.01), p.y / (cos(i.y + tt) / 0.01))); }
+  c = 1.2 - pow(c / 2.0, 1.35); return clamp(pow(abs(c), 7.0), 0.0, 1.5); }`)
         .replace("#include <color_fragment>", `#include <color_fragment>
 // sand ripples + patchy colour so the floor isn't a flat colour
 float rip = sin(vWorldP.x * 3.1 + sin(vWorldP.z * 1.7) * 1.6) * 0.5 + 0.5;
@@ -142,14 +145,35 @@ export function Scenery({ zoneIndex, worldW, floorY }: { zoneIndex: number; worl
   useEffect(() => {
     rocks.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined; if (m?.color) { m.userData.base ??= m.color.clone(); m.color.copy(m.userData.base).multiply(new THREE.Color(tint)); } });
   }, [rocks.scene, tint]);
-  return (
-    <>
-      {placements.map((p, i) => {
-        const n = p.kind === "rock" ? norm.rock : norm.coral;
-        return <Clone key={i} object={p.kind === "rock" ? rocks.scene : coral.scene} position={[p.x, floorY + n.lift * p.s - (p.kind === "rock" ? 0.55 * p.s : 0.12), p.z]} scale={n.s * p.s} rotation={[0, p.ry, 0]} />;
-      })}
-    </>
-  );
+  // Instanced: every part of the rock/coral models is drawn once for all its copies (a cloned
+  // model per placement meant hundreds of draw calls, a big cost on integrated graphics).
+  const group = useMemo(() => {
+    const g = new THREE.Group();
+    const build = (scene: THREE.Object3D, kind: "rock" | "coral") => {
+      const list = placements.filter((p) => p.kind === kind);
+      if (!list.length) return;
+      const n = kind === "rock" ? norm.rock : norm.coral;
+      const place = list.map((p) => new THREE.Matrix4().compose(
+        new THREE.Vector3(p.x, floorY + n.lift * p.s - (kind === "rock" ? 0.55 * p.s : 0.12), p.z),
+        new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), p.ry),
+        new THREE.Vector3().setScalar(n.s * p.s)));
+      scene.updateMatrixWorld(true);
+      scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const inst = new THREE.InstancedMesh(m.geometry, m.material, list.length);
+        place.forEach((pm, i) => inst.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(pm, m.matrixWorld)));
+        inst.instanceMatrix.needsUpdate = true;
+        inst.frustumCulled = false;
+        g.add(inst);
+      });
+    };
+    build(rocks.scene, "rock");
+    build(coral.scene, "coral");
+    return g;
+  }, [placements, norm, rocks.scene, coral.scene, floorY]);
+  useEffect(() => () => { group.children.forEach((c) => (c as THREE.InstancedMesh).dispose()); }, [group]);
+  return <primitive object={group} />;
 }
 
 /**
@@ -220,8 +244,37 @@ function Diver3D({ body, onReady, look, length }: { body: Ref<{ x: number; y: nu
   );
 }
 
-export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmers, speciesIds, onModelReady, gear }: {
+/**
+ * Compiles every shader in the scene in the background while the loading screen is up, so the
+ * first frames of the dive don't freeze while the GPU builds each material's program.
+ */
+function Warmup({ ready, onWarm }: { ready: boolean; onWarm: () => void }) {
+  const { gl, scene, camera } = useThree();
+  const done = useRef(onWarm);
+  done.current = onWarm;
+  useEffect(() => {
+    if (!ready) return;
+    let live = true;
+    const id = requestAnimationFrame(() => {
+      // Upload every texture now too (first-use uploads were causing hitches once play began).
+      scene.traverse((o) => {
+        const mats = (o as THREE.Mesh).material;
+        for (const m of (Array.isArray(mats) ? mats : mats ? [mats] : []) as THREE.MeshStandardMaterial[]) {
+          for (const tex of [m.map, m.normalMap, m.roughnessMap, m.metalnessMap, m.emissiveMap, m.aoMap]) if (tex) gl.initTexture(tex);
+        }
+      });
+      gl.compileAsync(scene, camera).catch(() => undefined).finally(() => { if (live) done.current(); });
+    });
+    return () => { live = false; cancelAnimationFrame(id); };
+  }, [ready, gl, scene, camera]);
+  return null;
+}
+
+export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmers, speciesIds, onModelReady, gear, warmReady = false, onWarm }: {
   zoneIndex: number;
+  /** True once every model is loaded: then shaders are compiled and `onWarm` is called. */
+  warmReady?: boolean;
+  onWarm?: () => void;
   gear?: GearLook;
   view: { w: number; h: number };
   worldW: number;
@@ -236,28 +289,36 @@ export default function Ocean3D({ zoneIndex, view, worldW, camera, body, swimmer
   const floorY = -(view.h * 0.93) / U;
   const W = worldW / U;
   const dist = (view.h / U / 2) / Math.tan(((FOV / 2) * Math.PI) / 180);
-  const lite = view.w < 760; // phones: fewer plants and particles
+  // Quality adapts to the device: phones start light, and if frames drop on a laptop the scene
+  // switches to fewer plants/particles and 1x resolution instead of stuttering.
+  const forced = typeof location !== "undefined" ? new URLSearchParams(location.search).get("q") : null; // probe: ?q=low|high
+  const [lowQuality, setLowQuality] = useState(forced ? forced === "low" : view.w < 760 || isIntegratedGpu());
+  const [warmed, setWarmed] = useState(false);
+  const [startedLow] = useState(lowQuality); // anti-aliasing is fixed when the canvas is created
+  const lite = lowQuality;
   return (
     <Canvas
       className="ocean-3d"
       style={{ position: "absolute", inset: 0, zIndex: 1, pointerEvents: "none" }}
-      dpr={[1, Math.min(1.75, window.devicePixelRatio || 1)]}
-      gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
+      dpr={lite ? 0.9 : Math.min(1.5, window.devicePixelRatio || 1)}
+      gl={{ alpha: true, antialias: !startedLow, powerPreference: "high-performance" }}
       camera={{ fov: FOV, near: 0.1, far: 120, position: [view.w / 2 / U, -view.h / 2 / U, dist] }}
       onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.05; gl.outputColorSpace = THREE.SRGBColorSpace; }}
     >
       <fog attach="fog" args={[look.fog, dist * 0.75, dist * (2.4 - zoneIndex * 0.22)]} />
+      <Warmup ready={warmReady} onWarm={() => { setWarmed(true); onWarm?.(); }} />
+      {warmed && !forced && <PerformanceMonitor flipflops={1} onDecline={() => setLowQuality(true)} />}
       <Rig view={view} camera={camera} />
       <Lights look={look} body={body} />
-      <UnderwaterEnv intensity={[0.5, 0.28, 0.14, 0.1, 0.08][zoneIndex] ?? 0.1} />
-      <Seafloor worldW={W} floorY={floorY} look={look} />
-      <KelpForest zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
-      <Seagrass zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
-      <DeepLife zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
-      {zoneIndex === 0 && <SurfaceFromBelow worldW={W} />}
-      <SunShafts zoneIndex={zoneIndex} worldW={W} floorY={floorY} />
-      <MarineSnow zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />
-      <Suspense fallback={null}><Scenery zoneIndex={zoneIndex} worldW={W} floorY={floorY} /></Suspense>
+      {!lite && <UnderwaterEnv intensity={[0.5, 0.28, 0.14, 0.1, 0.08][zoneIndex] ?? 0.1} />}
+      {!OFF.has("floor") && <Seafloor worldW={W} floorY={floorY} look={look} />}
+      {!OFF.has("kelp") && <KelpForest zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />}
+      {!OFF.has("grass") && <Seagrass zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />}
+      {!OFF.has("deep") && <DeepLife zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />}
+      {zoneIndex === 0 && !OFF.has("surface") && <SurfaceFromBelow worldW={W} />}
+      {!OFF.has("shafts") && <SunShafts zoneIndex={zoneIndex} worldW={W} floorY={floorY} />}
+      {!OFF.has("snow") && <MarineSnow zoneIndex={zoneIndex} worldW={W} floorY={floorY} lite={lite} />}
+      {!OFF.has("scenery") && <Suspense fallback={null}><Scenery zoneIndex={zoneIndex} worldW={W} floorY={floorY} /></Suspense>}
       {speciesIds.filter((id) => SPECIES_MODEL[id]).map((id) => (
         <Suspense key={id} fallback={null}><Animal speciesId={id} swimmers={swimmers} onReady={onModelReady} /></Suspense>
       ))}

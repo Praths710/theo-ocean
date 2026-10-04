@@ -1,5 +1,5 @@
 import type { ChatMsg } from "./llm";
-import type { PlayerState } from "../shared/ocean";
+import { earnedXp, type PlayerState } from "../shared/ocean";
 import { loadDoc, saveDoc } from "./persist";
 
 // Player progress, kept in memory and persisted as one document (Postgres or a JSON file).
@@ -25,6 +25,8 @@ let db: Record<string, PlayerRecord> = {};
 /** Load saved players; call once before the server starts listening. */
 export async function initStore() {
   db = await loadDoc<Record<string, PlayerRecord>>("players", {});
+  // Older saves were given XP for chatting and repeated quizzes: recompute from real progress.
+  for (const rec of Object.values(db)) rec.state.xp = earnedXp(rec.state);
 }
 
 const scheduleSave = () => saveDoc("players", db);
@@ -53,6 +55,7 @@ export function getPlayer(id: string): PlayerRecord {
 export function updatePlayer(id: string, fn: (rec: PlayerRecord) => void) {
   const rec = getPlayer(id);
   fn(rec);
+  rec.state.xp = earnedXp(rec.state);
   if (rec.history.length > MAX_HISTORY) {
     rec.history = rec.history.slice(-MAX_HISTORY);
     // History must start with a user turn.

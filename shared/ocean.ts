@@ -128,6 +128,36 @@ export const zones: Zone[] = [
  */
 export const XP = { discover: 25, quizCorrect: 10, checkpoint: 100 } as const;
 
+const ALL_SPECIES_IDS = new Set(zones.flatMap((z) => z.species.map((s) => s.id)));
+
+/**
+ * XP is always derived from what the diver has actually done (scans + checkpoints), so it can
+ * never drift or be inflated, and older saves are corrected automatically.
+ */
+export function earnedXp(state: Pick<PlayerState, "discovered" | "passedZones">) {
+  const scans = new Set(state.discovered.filter((id) => ALL_SPECIES_IDS.has(id))).size;
+  const passed = new Set(state.passedZones ?? []).size;
+  return scans * XP.discover + passed * XP.checkpoint;
+}
+
+/** Diver ranks by XP (the most XP possible is every species scanned and every checkpoint passed). */
+export const RANKS = [
+  { xp: 0, name: "Snorkeler" },
+  { xp: 100, name: "Reef Diver" },
+  { xp: 250, name: "Open-Water Diver" },
+  { xp: 450, name: "Deep Diver" },
+  { xp: 700, name: "Abyss Explorer" },
+  { xp: 950, name: "Trench Legend" },
+] as const;
+
+export function rankFor(xp: number) {
+  let i = 0;
+  while (i + 1 < RANKS.length && xp >= RANKS[i + 1].xp) i++;
+  const next = RANKS[i + 1];
+  const pct = next ? Math.round(((xp - RANKS[i].xp) / (next.xp - RANKS[i].xp)) * 100) : 100;
+  return { index: i, name: RANKS[i].name, next: next ?? null, pct };
+}
+
 export function findZone(id: string | undefined) {
   return zones.find((z) => z.id === id) ?? zones[0];
 }

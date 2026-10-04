@@ -3,6 +3,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import ModelActor, { preloadModel, type GearLook } from "./ModelActor";
 import UnderwaterEnv from "./UnderwaterEnv";
+import { isIntegratedGpu } from "./gpu";
 
 // The same 3D diver as in the game, hovering and finning gently for the home screen and locker.
 
@@ -28,7 +29,7 @@ function Hover({ look, onReady, length, yaw }: { look: GearLook; onReady?: () =>
 
 export default function DiverStage({ look, className, onReady, length = 4.3, yaw = -0.45 }: { look: GearLook; className?: string; onReady?: () => void; length?: number; yaw?: number }) {
   return (
-    <Canvas className={className} dpr={[1, 2]} camera={{ position: [0, 0.35, 5.2], fov: 38 }} gl={{ alpha: true, antialias: true }}
+    <Canvas className={className} dpr={isIntegratedGpu() ? 1 : [1, 2]} camera={{ position: [0, 0.35, 5.2], fov: 38 }} gl={{ alpha: true, antialias: true }}
       onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.15; }}>
       <hemisphereLight args={["#bff3ff", "#0a2a3c", 1.1]} />
       <UnderwaterEnv intensity={0.55} />

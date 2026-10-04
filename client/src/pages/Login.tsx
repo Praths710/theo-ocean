@@ -30,7 +30,7 @@ export default function Login() {
 
   return (
     <main className="login-page">
-      <OceanBackdrop zoneIndex={0} />
+      <OceanBackdrop zoneIndex={0} waterless />
       <Backdrop3D className="backdrop-3d" zoneIndex={0} cruisers={[
         { id: "whale", y: -2.0, z: -9, length: 4.5, speed: 0.7, phase: 0.2 },
         { id: "hawksbill", y: -4.6, z: -2.5, length: 1.3, speed: 1.1, phase: 1.3 },

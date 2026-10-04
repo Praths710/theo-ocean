@@ -18,8 +18,14 @@ let zone = 0;
 let muted = false;
 let onBreath: (() => void) | null = null;
 
+// Noise buffers are reused (they were regenerated for every whale call and bubble burst).
+const noiseCache = new Map<string, AudioBuffer>();
 function noiseBuffer(ac: AudioContext, seconds: number, brown = false) {
+  const key = `${seconds}:${brown}`;
+  const hit = noiseCache.get(key);
+  if (hit) return hit;
   const buf = ac.createBuffer(1, ac.sampleRate * seconds, ac.sampleRate);
+  noiseCache.set(key, buf);
   const d = buf.getChannelData(0);
   let last = 0;
   for (let i = 0; i < d.length; i++) {
@@ -29,7 +35,7 @@ function noiseBuffer(ac: AudioContext, seconds: number, brown = false) {
   return buf;
 }
 
-function impulse(ac: AudioContext, seconds = 3.5, decay = 2.8) {
+function impulse(ac: AudioContext, seconds = 2.2, decay = 2.8) {
   const len = ac.sampleRate * seconds;
   const buf = ac.createBuffer(2, len, ac.sampleRate);
   for (let c = 0; c < 2; c++) {

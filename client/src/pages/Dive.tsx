@@ -81,9 +81,11 @@ export default function Dive() {
   // While the 3D models download, show a loading screen rather than flat art that later pops into 3D.
   // If something is still missing after 20s, carry on with the illustration for that one.
   const [loadTimedOut, setLoadTimedOut] = useState(false);
+  const [warmed3d, setWarmed3d] = useState(false);
   const loadProgress = useProgress((p) => p.progress);
   useEffect(() => {
     setLoadTimedOut(false);
+    setWarmed3d(false);
     const t = setTimeout(() => setLoadTimedOut(true), 20_000);
     return () => clearTimeout(t);
   }, [zone.id]);
@@ -427,7 +429,9 @@ export default function Dive() {
 
   const want3d = (id: string) => webgl2 && (id === "diver" || Boolean(SPECIES_MODEL[id]));
   const hide2d = (id: string) => want3d(id) && (models3d[id] || !loadTimedOut);
-  const loading3d = webgl2 && !loadTimedOut && !["diver", ...zone.species.map((sp) => sp.id)].filter(want3d).every((id) => models3d[id]);
+  const models3dReady = ["diver", ...zone.species.map((sp) => sp.id)].filter(want3d).every((id) => models3d[id]);
+  // Keep the loading screen until the models are in AND their shaders are compiled (no freeze on start).
+  const loading3d = webgl2 && !loadTimedOut && !(models3dReady && warmed3d);
 
   return (
     <main className={`dive zone-${zoneIndex} ${transition ? `transition-${transition}` : ""}`}>
@@ -439,10 +443,10 @@ export default function Dive() {
         onPointerUp={() => (pointer.current = null)}
         onPointerLeave={() => (pointer.current = null)}
       >
-        <OceanBackdrop ref={ocean} zoneIndex={zoneIndex} diver={probe} camera={camera} />
+        <OceanBackdrop ref={ocean} zoneIndex={zoneIndex} diver={probe} camera={camera} waterless={webgl2} />
         {webgl2 ? (
           <Ocean3D key={`${zone.id}-${view.w}x${view.h}`} zoneIndex={zoneIndex} view={view} worldW={worldW} camera={camera} body={body} swimmers={swimmers}
-            speciesIds={zone.species.map((s) => s.id)} onModelReady={onModelReady} gear={diverLook(state.diver)} />
+            speciesIds={zone.species.map((s) => s.id)} onModelReady={onModelReady} gear={diverLook(state.diver)} warmReady={models3dReady} onWarm={() => setWarmed3d(true)} />
         ) : (
           <div ref={farEl} className="parallax-far">
             <SeascapeStrip zoneIndex={zoneIndex} layer="far" tiles={Math.ceil(WORLD_SCREENS * FAR_PARALLAX) + 2} tileWidth={view.w} />

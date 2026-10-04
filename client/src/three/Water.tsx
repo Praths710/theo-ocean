@@ -23,7 +23,7 @@ export function SunShafts({ zoneIndex, worldW, floorY }: { zoneIndex: number; wo
   const strength = RAYS[zoneIndex] ?? 0;
   const shafts = useMemo(() => {
     const r = rng(91 + zoneIndex);
-    const n = Math.round(worldW / 2.6);
+    const n = Math.round(worldW / 4.5);
     return Array.from({ length: n }, (_, i) => ({ x: (i + r()) * (worldW / n), z: -2 - r() * 11, w: 0.8 + r() * 2.6, tilt: 0.22 + r() * 0.12, seed: r() * 100, k: 0.5 + r() * 0.8 }));
   }, [worldW, zoneIndex]);
   const uniforms = useMemo(() => ({ uTime: { value: 0 }, uStrength: { value: strength } }), [strength]);

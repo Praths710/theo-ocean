@@ -59,7 +59,7 @@ async function render(id: ModelId): Promise<string | null> {
   const r = getRenderer();
   r.setClearColor(0x000000, 0);
   r.render(scene, camera);
-  const url = r.domElement.toDataURL("image/png");
+  const url = r.domElement.toDataURL("image/webp", 0.85); // falls back to PNG where WebP encoding is unsupported
   model.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
@@ -70,10 +70,26 @@ async function render(id: ModelId): Promise<string | null> {
 }
 
 /** A cached picture of the model (rendered one at a time), or null if WebGL/loading fails. */
+// Snapshots are kept in the browser between visits, so the home screen doesn't reload and
+// re-render every model each time (bump the version when the models or lighting change).
+const STORE_KEY = (id: ModelId) => `theo-thumb-v2:${id}`;
+function stored(id: ModelId) {
+  try { return localStorage.getItem(STORE_KEY(id)); } catch { return null; }
+}
+function store(id: ModelId, url: string | null) {
+  if (!url) return;
+  try { localStorage.setItem(STORE_KEY(id), url); } catch { /* storage full or blocked: render again next time */ }
+}
+
 export function modelSnapshot(id: ModelId): Promise<string | null> {
   let p = cache.get(id);
+  const saved = p ? null : stored(id);
+  if (!p && saved) {
+    p = Promise.resolve(saved);
+    cache.set(id, p);
+  }
   if (!p) {
-    p = queue.then(() => render(id)).catch(() => null);
+    p = queue.then(() => render(id)).then((url) => { store(id, url); return url; }).catch(() => null);
     queue = p;
     cache.set(id, p);
   }

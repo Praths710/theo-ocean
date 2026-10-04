@@ -125,8 +125,7 @@ function buildApi() {
     updatePlayer(uid(req), (r) => {
       if (!r.state.discovered.includes(found.species.id)) {
         r.state.discovered.push(found.species.id);
-        r.state.xp += XP.discover;
-        gained = XP.discover;
+        gained = XP.discover; // XP itself is derived from progress in the store
       }
     });
     res.json({ ...snapshot(uid(req)), gained });
@@ -167,8 +166,8 @@ function buildApi() {
   api.post("/quiz/answer", (req, res) => {
     const result = gradeQuiz(uid(req), String(req.body?.quizId ?? ""), Number(req.body?.answerIndex));
     if (!result) return res.status(409).json({ error: "That quiz has expired. Ask for a new one." });
-    const gained = result.correct ? XP.quizCorrect : 0;
-    updatePlayer(uid(req), (r) => { r.state.xp += gained; });
+    const gained = 0;
+    updatePlayer(uid(req), () => {}); // (legacy practice quiz: XP is derived from scans + checkpoints)
     res.json({ ...result, gained, ...snapshot(uid(req)) });
   });
 
@@ -207,7 +206,6 @@ function buildApi() {
       r.state.quiz.asked += results.length;
       r.state.quiz.correct += score;
       if (firstPass) {
-        r.state.xp += XP.checkpoint; // once per zone; retakes and failed tries give nothing
         r.state.passedZones = [...(r.state.passedZones ?? []), pending.zoneId];
       }
       const missed = pending.answers.filter((_, i) => !results[i].correct).map((a) => a.topic);

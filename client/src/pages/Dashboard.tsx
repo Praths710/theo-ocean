@@ -4,7 +4,7 @@ import Credits from "@/components/Credits";
 import SpeciesCard from "@/components/SpeciesCard";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
-import { DIVER_PRESETS, GEAR_SWATCHES, diverLook, zones, type DiverLook } from "@shared/ocean";
+import { DIVER_PRESETS, GEAR_SWATCHES, diverLook, rankFor, zones, type DiverLook } from "@shared/ocean";
 import OceanBackdrop from "@/components/ocean/OceanBackdrop";
 import Backdrop3D from "@/three/Backdrop3D";
 import { SPECIES_MODEL, type ModelId } from "@/three/modelConfig";
@@ -36,8 +36,7 @@ export default function Dashboard() {
   const zone = zones[zoneIdx];
   const allSpecies = zones.flatMap((z) => z.species.map((s) => ({ ...s, zone: z })));
   const found = state.discovered.length;
-  const level = Math.floor(state.xp / 100) + 1;
-  const levelPct = state.xp % 100;
+  const rank = rankFor(state.xp);
   const sunlitFound = zones[0].species.filter((s) => state.discovered.includes(s.id)).length;
 
   const badges = [
@@ -74,7 +73,7 @@ export default function Dashboard() {
   return (
     <main className="base">
       <div className="base-bg" aria-hidden="true">
-        <OceanBackdrop zoneIndex={zoneIdx} />
+        <OceanBackdrop zoneIndex={zoneIdx} waterless />
         <Backdrop3D className="backdrop-3d" zoneIndex={zoneIdx}
           cruisers={zones[zoneIdx].species.filter((s) => SPECIES_MODEL[s.id]).slice(0, 2).map((s, i) => ({ id: SPECIES_MODEL[s.id] as ModelId, y: -2.2 - i * 1.6, z: -3 - i * 3, length: 1.6, speed: 0.9 + i * 0.3, phase: i * 0.7 }))} />
         <div className="base-shade" />
@@ -86,14 +85,16 @@ export default function Dashboard() {
           <div className="player-portrait" style={{ ["--suit" as string]: diverLook(state.diver).suit }}>{state.diver.name.slice(0, 1).toUpperCase()}</div>
           <div className="player-info">
             <strong>{state.diver.name}</strong>
-            <div className="lvl-row"><span className="lvl">LV {level}</span><div className="lvl-bar"><span style={{ width: `${levelPct}%` }} /></div></div>
+            <div className="lvl-row" title={rank.next ? `${rank.next.xp - state.xp} XP to ${rank.next.name}` : "Top rank"}>
+              <span className="lvl">{rank.name}</span><div className="lvl-bar"><span style={{ width: `${rank.pct}%` }} /></div>
+            </div>
           </div>
         </div>
         <div className="currencies">
-          <span className="coin xp" title="Total XP"><Gem size={15} /><b>{state.xp}</b></span>
-          <span className="coin shells" title="Species collected"><Fish size={15} /><b>{found}/{allSpecies.length}</b></span>
-          <span className="coin stars" title="Checkpoints passed"><Star size={15} /><b>{state.passedZones?.length ?? 0}</b></span>
-          <span className="coin trophies" title="Badges"><Trophy size={15} /><b>{badges.filter((b) => b.got).length}</b></span>
+          <span className="coin xp" title="XP: 25 per new species scanned, 100 per checkpoint passed"><Gem size={15} /><b>{state.xp}</b><small>XP</small></span>
+          <span className="coin shells" title="Species discovered"><Fish size={15} /><b>{found}/{allSpecies.length}</b><small>species</small></span>
+          <span className="coin stars" title="Zone checkpoints passed"><Star size={15} /><b>{state.passedZones?.length ?? 0}/{zones.length}</b><small>checkpoints</small></span>
+          <span className="coin trophies" title="Badges earned"><Trophy size={15} /><b>{badges.filter((b) => b.got).length}/{badges.length}</b><small>badges</small></span>
         </div>
         <div className="top-buttons">
           <button className="round-btn" onClick={() => setCredits(true)} aria-label="Credits" title="Credits"><Info size={17} /></button>
@@ -118,7 +119,7 @@ export default function Dashboard() {
                   </button>
                   <div className="node-text">
                     <strong>{z.name}</strong>
-                    <span>{locked ? `🔒 Pass ${zones[i - 1].name} checkpoint` : state.passedZones?.includes(z.id) ? `${z.depthLabel} · ✓ passed` : z.depthLabel}</span>
+                    <span>{locked ? `Locked · pass level ${i}` : state.passedZones?.includes(z.id) ? `${z.depthLabel} · ✓ passed` : z.depthLabel}</span>
                     {!locked && <span className="pips">{z.species.map((s) => <i key={s.id} className={state.discovered.includes(s.id) ? "on" : ""} />)}<em>{got}/{z.species.length}</em></span>}
                   </div>
                   {i === zoneIdx && <span className="you-are-here">YOU</span>}
