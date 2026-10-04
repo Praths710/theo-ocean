@@ -119,8 +119,8 @@ totalEmissiveRadiance += vec3(0.55, 0.9, 1.0) * cst(vWorldP.xz * 1.6, uTime * 0.
 
 /** Scattered rock outcrops (all zones) and coral heads (sunlit reef). */
 export function Scenery({ zoneIndex, worldW, floorY }: { zoneIndex: number; worldW: number; floorY: number }) {
-  const rocks = useGLTF(MODEL_CONFIG.rocks.file, false, true);
-  const coral = useGLTF(MODEL_CONFIG["coral-reef"].file, false, true);
+  const rocks = useGLTF(MODEL_CONFIG.rocks.file!, false, true);
+  const coral = useGLTF(MODEL_CONFIG["coral-reef"].file!, false, true);
   const placements = useMemo(() => {
     const r = rng(1234 + zoneIndex * 97);
     const out: { kind: "rock" | "coral"; x: number; z: number; s: number; ry: number }[] = [];

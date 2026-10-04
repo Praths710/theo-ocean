@@ -18,7 +18,7 @@ export default function Credits({ onClose }: { onClose: () => void }) {
         <div className="cp-body">
           <p className="muted">These 3D models are used under Creative Commons Attribution licences. They were optimised and re-posed for this game.</p>
           <ul className="credit-list">
-            {used.map((id) => {
+            {used.filter((id) => MODEL_CONFIG[id].credit.url).map((id) => {
               const c = MODEL_CONFIG[id].credit;
               return (
                 <li key={id}>

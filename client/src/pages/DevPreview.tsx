@@ -4,7 +4,8 @@ import { SessionContext, type SessionValue } from "@/lib/session";
 import Dashboard from "./Dashboard";
 import Dive from "./Dive";
 import DiverStage from "@/three/DiverStage";
-import { DIVER_PRESETS } from "@shared/ocean";
+import { DIVER_PRESETS, zones } from "@shared/ocean";
+import SpeciesCard from "@/components/SpeciesCard";
 
 const q = new URLSearchParams(location.search);
 const mock: SessionValue = {
@@ -25,6 +26,11 @@ const mock: SessionValue = {
 };
 
 export default function DevPreview() {
+  if (q.get("page") === "card") {
+    // A species card on its own (?page=card&sp=tripod-fish).
+    const sp = zones.flatMap((z) => z.species).find((x) => x.id === q.get("sp"));
+    return <div style={{ position: "fixed", inset: 0, background: "#041a2e" }}>{sp && <SpeciesCard species={sp} buddy="Coral" onAsk={() => {}} onClose={() => {}} />}</div>;
+  }
   if (q.get("page") === "diver") {
     // Big side-on diver for checking the pose (?yaw=0 side, ?yaw=-0.45 three-quarter).
     return <div style={{ position: "fixed", inset: 0, background: "#0b3550" }}><DiverStage look={DIVER_PRESETS[Number(q.get("preset") ?? 2)].look} length={Number(q.get("len") ?? 4.6)} yaw={Number(q.get("yaw") ?? 0)} /></div>;

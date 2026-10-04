@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { MODEL_CONFIG, SPECIES_MODEL, type ModelId } from "./modelConfig";
+import { builtScene } from "./ModelActor";
 
 // Small still pictures of the 3D models for card grids (the collection, the expedition map).
 // A live 3D view per card would need one WebGL context each (browsers allow ~16), so every model
@@ -27,8 +28,7 @@ function getRenderer() {
 
 async function render(id: ModelId): Promise<string | null> {
   const cfg = MODEL_CONFIG[id];
-  const gltf = await loader.loadAsync(cfg.file);
-  const model = gltf.scene;
+  const model = cfg.build ? builtScene(id).clone(true) : (await loader.loadAsync(cfg.file!)).scene;
   model.rotation.set(...cfg.rot);
   const holder = new THREE.Group();
   holder.add(model);
@@ -72,7 +72,7 @@ async function render(id: ModelId): Promise<string | null> {
 /** A cached picture of the model (rendered one at a time), or null if WebGL/loading fails. */
 // Snapshots are kept in the browser between visits, so the home screen doesn't reload and
 // re-render every model each time (bump the version when the models or lighting change).
-const STORE_KEY = (id: ModelId) => `theo-thumb-v2:${id}`;
+const STORE_KEY = (id: ModelId) => `theo-thumb-v3:${id}`;
 function stored(id: ModelId) {
   try { return localStorage.getItem(STORE_KEY(id)); } catch { return null; }
 }

@@ -13,7 +13,7 @@ const MESHOPT = true;
 
 export function preloadModel(id: ModelId) {
   const cfg = MODEL_CONFIG[id];
-  if (cfg) useGLTF.preload(cfg.file, false, MESHOPT);
+  if (cfg?.file) useGLTF.preload(cfg.file, false, MESHOPT);
 }
 
 type SwimUniforms = { uTime: { value: number }; uAmp: { value: number }; uFreq: { value: number }; uSpeed: { value: number }; uLen: { value: number }; uMode: { value: number }; uEffort: { value: number } };
@@ -41,7 +41,7 @@ if (uMode > 0.5) {
   // Bend normals with the joints (finite difference through the same rig) so lighting stays right.
   vec3 a0 = (uToActor * vec4(position, 1.0)).xyz;
   vec3 e = normalize(mat3(uToActor) * objectNormal) * 0.01 * uLen;
-  objectNormal = normalize(mat3(uFromActor) * (rigKick(a0 + e) - rigKick(a0)));
+  objectNormal = normalize(mat3(uFromActor) * (rigAny(a0 + e) - rigAny(a0)));
 }`)
       .replace("#include <begin_vertex>", `#include <begin_vertex>
 {
@@ -54,7 +54,7 @@ if (uMode > 0.5) {
     float w = smoothstep(0.35, -0.5, s);                  // head stiff, tail loose
     d.z = sin(s * uFreq - uTime * uSpeed) * uAmp * uLen * w;
   } else {
-    d = rigKick(a.xyz) - a.xyz;
+    d = rigAny(a.xyz) - a.xyz;
   }
   vec4 back = uFromActor * vec4(d, 0.0); // actor space -> mesh space
   transformed += back.xyz;
@@ -111,7 +111,26 @@ vec3 rigKick(vec3 a) {
   p.yz = rot2(p.yz, vec2(0.04, 0.0) * L, upper * 0.045 * beat);
   p.xy = rot2(p.xy, vec2(-0.05, 0.04) * L, upper * (0.012 * sin(uTime * uSpeed * 2.0 + 0.6) + 0.006 * sin(uTime * 1.1)));
   return p;
-}`;
+}
+// Sea turtle: the front flippers do the work in long, slow strokes (both together, like wings),
+// feathering back on the recovery; the rear flippers paddle a little; the head bobs against it.
+vec3 rigFlap(vec3 a) {
+  float L = uLen;
+  float s = a.x / L;
+  float side = a.z >= 0.0 ? 1.0 : -1.0;
+  float az = abs(a.z) / L;
+  float beat = sin(uTime * uSpeed);
+  vec3 p = a;
+  float wf = smoothstep(0.19, 0.27, az) * smoothstep(0.02, 0.08, s) * (1.0 - smoothstep(0.3, 0.35, s));
+  p.xz = rot2(p.xz, vec2(0.15 * L, side * 0.2 * L), side * wf * 0.22 * (0.5 + 0.5 * cos(uTime * uSpeed)));
+  p.yz = rot2(p.yz, vec2(0.0, side * 0.2 * L), side * wf * 0.55 * beat);
+  float wr = smoothstep(0.14, 0.2, az) * smoothstep(-0.12, -0.18, s) * (1.0 - smoothstep(-0.34, -0.4, s));
+  p.yz = rot2(p.yz, vec2(0.0, side * 0.15 * L), side * wr * 0.25 * sin(uTime * uSpeed + 1.6));
+  float hd = smoothstep(0.29, 0.34, s);
+  p.xy = rot2(p.xy, vec2(0.3 * L, 0.0), hd * 0.06 * sin(uTime * uSpeed + 3.14159));
+  return p;
+}
+vec3 rigAny(vec3 a) { return uMode > 1.5 ? rigFlap(a) : rigKick(a); }`;
 
 type GearUniforms = { uSuit: { value: THREE.Color }; uPanel: { value: THREE.Color }; uFins: { value: THREE.Color }; uTank: { value: THREE.Color }; uGearOn: { value: number } };
 export type GearLook = { suit: string; panel: string; fins: string; tank: string };
@@ -146,10 +165,33 @@ const TANK_GLSL = `#include <map_fragment>
 }`;
 
 /** `tempo`: animation speed multiplier read every frame (e.g. faster kicks when swimming fast). */
+type ActorProps = { id: ModelId; length?: number; children?: ReactNode; onReady?: () => void; tempo?: { current: number }; look?: GearLook; effort?: { current: number } };
+
 /** `look`: outfit colours (diver only). `effort` (0..1): how hard the diver kicks. */
-export default function ModelActor({ id, length, children, onReady, tempo, look, effort }: { id: ModelId; length?: number; children?: ReactNode; onReady?: () => void; tempo?: { current: number }; look?: GearLook; effort?: { current: number } }) {
+export default function ModelActor(props: ActorProps) {
+  return MODEL_CONFIG[props.id].build ? <BuiltActor {...props} /> : <GltfActor {...props} />;
+}
+
+function GltfActor(props: ActorProps) {
+  const { scene, animations } = useGLTF(MODEL_CONFIG[props.id].file!, false, MESHOPT);
+  return <ActorBody {...props} scene={scene} animations={animations} />;
+}
+
+// Code-built animals are generated once and then cloned per actor like a loaded model.
+const built = new Map<ModelId, THREE.Group>();
+export function builtScene(id: ModelId) {
+  let g = built.get(id);
+  if (!g) { g = MODEL_CONFIG[id].build!(); built.set(id, g); }
+  return g;
+}
+const NO_CLIPS: THREE.AnimationClip[] = [];
+function BuiltActor(props: ActorProps) {
+  const scene = useMemo(() => builtScene(props.id), [props.id]);
+  return <ActorBody {...props} scene={scene} animations={NO_CLIPS} />;
+}
+
+function ActorBody({ id, length, children, onReady, tempo, look, effort, scene, animations }: ActorProps & { scene: THREE.Object3D; animations: THREE.AnimationClip[] }) {
   const cfg = MODEL_CONFIG[id];
-  const { scene, animations } = useGLTF(cfg.file, false, MESHOPT);
   const root = useRef<THREE.Group>(null);
   const actor = useRef<THREE.Group>(null);
   const model = useMemo(() => cloneSkinned(scene) as THREE.Group, [scene]);
@@ -160,7 +202,7 @@ export default function ModelActor({ id, length, children, onReady, tempo, look,
 
   const uniforms = useMemo<SwimUniforms>(() => ({
     uTime: { value: 0 }, uAmp: { value: cfg.swim?.amp ?? 0 }, uFreq: { value: cfg.swim?.freq ?? 6 }, uSpeed: { value: cfg.swim?.speed ?? 4 },
-    uLen: { value: target }, uMode: { value: cfg.swim?.mode === "kick" ? 1 : 0 }, uEffort: { value: 1 },
+    uLen: { value: target }, uMode: { value: cfg.swim?.mode === "kick" ? 1 : cfg.swim?.mode === "flap" ? 2 : 0 }, uEffort: { value: 1 },
   }), [cfg, target]);
 
   const gearU = useMemo<GearUniforms>(() => ({ uSuit: { value: new THREE.Color() }, uPanel: { value: new THREE.Color() }, uFins: { value: new THREE.Color() }, uTank: { value: new THREE.Color() }, uGearOn: { value: 0 } }), []);
